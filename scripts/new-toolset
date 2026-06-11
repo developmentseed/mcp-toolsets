@@ -1,0 +1,83 @@
+#!/usr/bin/env sh
+# Scaffold a new toolset: scripts/new-toolset <name> (kebab-case)
+
+set -e
+
+name="$1"
+if [ -z "$name" ]; then
+    echo "usage: scripts/new-toolset <name>" >&2
+    exit 1
+fi
+case "$name" in
+    *[!a-z0-9-]* | -* | *-)
+        echo "error: toolset name must be kebab-case (lowercase letters, digits, hyphens)" >&2
+        exit 1
+        ;;
+esac
+
+pkg=$(echo "$name" | tr '-' '_')
+dir="toolsets/$name"
+if [ -e "$dir" ]; then
+    echo "error: $dir already exists" >&2
+    exit 1
+fi
+
+mkdir -p "$dir/src/$pkg" "$dir/tests"
+
+cat > "$dir/pyproject.toml" <<EOF
+[project]
+name = "$name"
+version = "0.1.0"
+description = "TODO: describe the $name toolset."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "langchain-core<2.0.0,>=1.4.6",
+    "mcp-runtime",
+]
+
+[tool.uv.sources]
+mcp-runtime = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+EOF
+
+cat > "$dir/toolset.yaml" <<EOF
+# Optional Helm values overrides for this toolset (see charts/mcp-toolset/values.yaml).
+{}
+EOF
+
+cat > "$dir/src/$pkg/__init__.py" <<EOF
+"""$name toolset."""
+EOF
+
+cat > "$dir/src/$pkg/tools.py" <<EOF
+"""LangChain tools for $name."""
+
+from langchain_core.tools import tool
+
+
+@tool
+def example(query: str) -> str:
+    """TODO: describe what this tool does (the docstring is the MCP schema)."""
+    return f"you said: {query}"
+
+
+TOOLS = [example]
+EOF
+
+cat > "$dir/tests/test_$pkg.py" <<EOF
+from $pkg.tools import example
+
+
+def test_example():
+    assert example.invoke({"query": "hi"}) == "you said: hi"
+EOF
+
+uv add "$name"
+
+echo
+echo "Scaffolded $dir and registered it in the workspace."
+echo "Next: edit $dir/src/$pkg/tools.py, then ./scripts/test"
+echo "Merge to main and CI deploys it as mcp-$name."

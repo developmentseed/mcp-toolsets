@@ -1,0 +1,57 @@
+[project]
+name = "mcp-toolsets"
+version = "0.1.0"
+description = "Monorepo of toolsets - atomic packages of LangChain tools - each auto-deployed as an MCP service."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "mcp-runtime",
+    "mcp-cli",
+    "dataset-search",
+    "aoi-generator",
+]
+
+[dependency-groups]
+dev = [
+    "pytest<10.0.0,>=9.0.3",
+    "pytest-asyncio<2.0.0,>=1.4.0",
+    "ruff<0.15.0,>=0.14.11",
+    "mypy<2.0.0,>=1.19.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "toolsets/*"]
+
+[tool.uv.sources]
+mcp-runtime = { workspace = true }
+mcp-cli = { workspace = true }
+dataset-search = { workspace = true }
+aoi-generator = { workspace = true }
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S"]
+"scripts/**" = ["S"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "toolsets"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["langchain_mcp_adapters.*"]
+ignore_missing_imports = true
