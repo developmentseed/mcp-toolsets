@@ -9,6 +9,10 @@ dist/
 .venv/
 .env
 
+# Chainlit (generated at runtime by mcp-agent-web)
+.chainlit/
+chainlit.md
+
 # Tooling caches
 .mypy_cache/
 .pytest_cache/

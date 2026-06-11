@@ -20,6 +20,9 @@ server.
   route for k8s probes.
 - **`packages/mcp-cli`** — Typer/rich client (`mcp-cli`) to list and call
   tools on a running service.
+- **`packages/mcp-agent`** — example chat agent (`mcp-agent`) that discovers
+  every server behind an index URL and drives their tools with a Mistral
+  model.
 - **`toolsets/*`** — one directory per toolset; each becomes an MCP service.
 - **`charts/mcp-toolset`** — generic Helm chart all toolsets deploy through.
 
@@ -244,6 +247,21 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 connections = httpx.get("https://<host>/").json()["connections"]
 tools = await MultiServerMCPClient(connections).get_tools()
 ```
+
+`packages/mcp-agent` does exactly that as an interactive chat (Mistral as the
+LLM; `MISTRAL_API_KEY` is read from the environment or a `.env` file in the
+working directory):
+
+```sh
+uv run mcp-agent https://<host>/                # all deployed toolsets
+uv run mcp-agent http://localhost:8000/mcp      # or one local mcp-serve
+uv run mcp-agent https://<host>/ --model mistral-large-latest
+```
+
+The same agent is available as a Chainlit chat UI: `uv run mcp-agent-web`
+serves it at `http://localhost:8080`, configured entirely from the
+environment/.env — `MCP_URL` (which index or server to chat with),
+`MISTRAL_MODEL` and `CHAINLIT_PORT`.
 
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
