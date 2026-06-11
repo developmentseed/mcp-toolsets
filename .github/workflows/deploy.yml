@@ -59,6 +59,8 @@ jobs:
           push: true
           build-args: TOOLSET=${{ matrix.toolset }}
           tags: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=mcp-${{ matrix.toolset }}
+          cache-to: type=gha,scope=mcp-${{ matrix.toolset }},mode=max
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube
@@ -86,7 +88,9 @@ jobs:
 
   index:
     needs: detect
-    if: needs.detect.outputs.ingress == 'true'
+    # Skip no-op pushes (e.g. docs): the index image is built from shared code,
+    # and any shared-code change already selects all toolsets in detect.
+    if: needs.detect.outputs.ingress == 'true' && needs.detect.outputs.toolsets != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,6 +109,8 @@ jobs:
           push: true
           build-args: TOOLSET=mcp-runtime
           tags: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=mcp-index
+          cache-to: type=gha,scope=mcp-index,mode=max
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube

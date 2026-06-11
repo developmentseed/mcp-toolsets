@@ -64,3 +64,5 @@ jobs:
           context: .
           push: false
           build-args: TOOLSET=${{ matrix.toolset }}
+          cache-from: type=gha,scope=mcp-${{ matrix.toolset }}
+          cache-to: type=gha,scope=mcp-${{ matrix.toolset }},mode=max
