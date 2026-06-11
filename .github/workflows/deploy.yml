@@ -3,6 +3,9 @@ name: Deploy
 on:
   push:
     branches: [main]
+  # Manual full deploy of every toolset (e.g. after fixing the workflow itself,
+  # which isn't a path changed-toolsets rebuilds for).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,7 +22,13 @@ jobs:
         with:
           fetch-depth: 0
       - id: changed
-        run: echo "toolsets=$(./scripts/changed-toolsets '${{ github.event.before }}..${{ github.sha }}')" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            range=""  # unusable range => changed-toolsets selects all
+          else
+            range="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          echo "toolsets=$(./scripts/changed-toolsets "$range")" >> "$GITHUB_OUTPUT"
       - id: ingress
         env:
           MCP_INGRESS_HOST: ${{ secrets.MCP_INGRESS_HOST }}
@@ -69,7 +78,7 @@ jobs:
             values="$values --set ingress.enabled=true --set ingress.host=$MCP_INGRESS_HOST --set ingress.tlsSecret=mcp-toolsets-tls"
           fi
           helm upgrade --install "mcp-${{ matrix.toolset }}" charts/mcp-toolset \
-            --namespace mcp-toolsets --create-namespace \
+            --namespace mcp-toolsets \
             --set name="${{ matrix.toolset }}" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
@@ -108,7 +117,7 @@ jobs:
           MCP_INGRESS_HOST: ${{ secrets.MCP_INGRESS_HOST }}
         run: |
           helm upgrade --install mcp-index charts/mcp-index \
-            --namespace mcp-toolsets --create-namespace \
+            --namespace mcp-toolsets \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
             --set ingress.host="$MCP_INGRESS_HOST" \

@@ -133,11 +133,30 @@ one-time setup below.
      --resource=deployments.apps,services,secrets,serviceaccounts,ingresses.networking.k8s.io,roles.rbac.authorization.k8s.io,rolebindings.rbac.authorization.k8s.io
    kubectl -n mcp-toolsets create rolebinding deployer \
      --role=deployer --serviceaccount=mcp-toolsets:deployer
-   kubectl -n mcp-toolsets create token deployer --duration=2160h  # token for the kubeconfig
    ```
 
    (`secrets` is Helm's release storage; `serviceaccounts`/`roles`/
    `rolebindings` are needed to install `charts/mcp-index`.)
+
+   `KUBE_CONFIG` is a complete kubeconfig file with a deployer token inside —
+   not the token alone. The API server URL must be reachable from GitHub's
+   runners, and the token expires (~90 days here), after which deploys fail
+   until the secret is refreshed:
+
+   ```sh
+   TOKEN=$(kubectl -n mcp-toolsets create token deployer --duration=2160h)
+   SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+   CA=$(kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+
+   KC=--kubeconfig=deployer.kubeconfig
+   kubectl config $KC set-cluster cluster --server="$SERVER"
+   kubectl config $KC set clusters.cluster.certificate-authority-data "$CA"
+   kubectl config $KC set-credentials deployer --token="$TOKEN"
+   kubectl config $KC set-context deployer --cluster=cluster --user=deployer --namespace=mcp-toolsets
+   kubectl config $KC use-context deployer
+
+   gh secret set KUBE_CONFIG < deployer.kubeconfig && rm deployer.kubeconfig
+   ```
 
 2. **GHCR pull secret** — the repo is private, so its images are too. Both
    charts reference a `ghcr-pull` Secret by default; create it from a GitHub
@@ -171,25 +190,11 @@ one-time setup below.
    hostname at the ingress controller's load balancer
    (`kubectl -n ingress-nginx get svc ingress-nginx-controller`), and tell
    cert-manager how to reach Let's Encrypt — the one resource it can't
-   create for itself:
+   create for itself. Set your email in `k8s/letsencrypt-clusterissuer.yaml`
+   (Let's Encrypt sends expiry warnings there), then:
 
    ```sh
-   kubectl apply -f - <<'EOF'
-   apiVersion: cert-manager.io/v1
-   kind: ClusterIssuer
-   metadata:
-     name: letsencrypt
-   spec:
-     acme:
-       server: https://acme-v02.api.letsencrypt.org/directory
-       email: you@example.com  # the only value to change
-       privateKeySecretRef:
-         name: letsencrypt-account-key  # created by cert-manager, any unused name works
-       solvers:
-         - http01:
-             ingress:
-               ingressClassName: nginx
-   EOF
+   kubectl apply -f k8s/letsencrypt-clusterissuer.yaml
    ```
 
    Certificates are then automatic: the `mcp-index` Ingress is annotated
@@ -201,8 +206,11 @@ one-time setup below.
 6. **Per-toolset Secrets**, created out-of-band (`kubectl create secret ...`),
    for any names a toolset lists under `secrets:` in its `toolset.yaml`.
 
-Finally set the GitHub secrets: `KUBE_CONFIG` (kubeconfig using the deployer
-token) and `MCP_INGRESS_HOST` (the hostname).
+Finally set the one GitHub secret step 1 didn't already push (`KUBE_CONFIG`):
+
+```sh
+gh secret set MCP_INGRESS_HOST --body <the-hostname>
+```
 
 ### One domain for all toolsets
 
