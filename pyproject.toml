@@ -7,6 +7,7 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "mcp-runtime",
     "mcp-cli",
+    "mcp-agent",
     "dataset-search",
     "aoi-generator",
 ]
@@ -28,6 +29,7 @@ members = ["packages/*", "toolsets/*"]
 [tool.uv.sources]
 mcp-runtime = { workspace = true }
 mcp-cli = { workspace = true }
+mcp-agent = { workspace = true }
 dataset-search = { workspace = true }
 aoi-generator = { workspace = true }
 
