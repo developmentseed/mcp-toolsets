@@ -78,7 +78,11 @@ tools and merge.
    ```
 
    `TOOLS` is the only required export. Non-empty docstrings are enforced by a
-   contract test.
+   contract test. If a tool does I/O (HTTP, database), write it as
+   `async def` — `@tool` supports coroutines natively; sync tools are fine
+   for pure computation (the runtime runs them in a thread pool). If a tool
+   needs the *user's* credentials, read them from the request headers — see
+   [Per-user credentials](#per-user-credentials).
 
 3. Add tests in `toolsets/my-toolset/tests/test_my_toolset.py` and run
    `./scripts/test`.
@@ -284,6 +288,76 @@ environment/.env — `MCP_URL` (which index or server to chat with),
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
 config to edit; the index's `/` path only catches what no toolset claims.
+
+### Per-user credentials
+
+Tools that act on a user's behalf (with credentials that differ per calling
+user) must not bake secrets into the deployment — and must not take them as
+tool arguments either, or the model sees them and they land in chat history
+and traces. Instead the client sends them as HTTP headers on every MCP
+call, and the tool reads them at call time:
+
+```python
+from mcp_runtime.credentials import credential_from_header
+
+@tool
+def whoami() -> dict[str, Any]:
+    """Report which account the calling user's credential belongs to."""
+    token = credential_from_header("x-demo-token")
+    ...
+
+TOOLS = [whoami]
+CREDENTIAL_HEADERS = ["x-demo-token"]  # advertised; validated by the contract test
+```
+
+The `CREDENTIAL_HEADERS` export is advertised in the toolset's `/health` and
+in the index's `toolsets` entries, so clients know which toolset needs which
+credential — and send each one *only* to the connections that declare it,
+never to unrelated toolsets. `toolsets/credential-demo` is a working
+(stubbed) example. Clients attach the header per connection — agents by
+decorating the index's `connections` map, `mcp-cli` with `-H`:
+
+```python
+connections = httpx.get("https://<host>/").json()["connections"]
+connections["credential-demo"]["headers"] = {"X-Demo-Token": user_token}
+tools = await MultiServerMCPClient(connections).get_tools()
+```
+
+`mcp-agent` goes further, in the shape a multi-user deployment needs: the
+agent is built **once** and credentials are supplied per call. Each
+connection gets an httpx client factory that, at request time, injects the
+calling user's headers — only those the toolset's advertised declaration
+names (for a direct single-server URL the agent asks the endpoint's sibling
+`/health` for its declaration):
+
+```python
+from mcp_agent.main import user_credentials
+
+with user_credentials({"x-demo-token": the_users_token}):
+    result = await agent.ainvoke(...)
+```
+
+The Chainlit UI builds a settings field (⚙ by the message box) for every
+credential header the connected toolsets advertise and applies the values
+per message — so one long-lived agent process serves many users, each with
+their own credentials.
+
+```sh
+uv run mcp-cli call whoami \
+  --url https://<host>/credential-demo/mcp -H "X-Demo-Token: $TOKEN"
+```
+
+The secret rides the transport (TLS-encrypted at the ingress), never the
+conversation, and the service stays stateless: every call carries its own
+credential, so one pod serves all users. A missing header raises a
+`MissingCredentialError` whose message tells the caller how to supply it.
+Test credential-using tools without a server via
+`mcp_runtime.credentials.header_context`:
+
+```python
+with header_context({"x-demo-token": "secret"}):
+    whoami.invoke({})
+```
 
 ## Development
 

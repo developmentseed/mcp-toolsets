@@ -22,6 +22,28 @@ app = typer.Typer(no_args_is_help=True, help=__doc__)
 console = Console()
 
 UrlOption = Annotated[str, typer.Option("--url", help="MCP server URL.")]
+HeaderOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--header",
+        "-H",
+        help='HTTP header sent with every request, as "Name: value" (repeatable) — '
+        "e.g. per-user credentials a tool reads server-side.",
+    ),
+]
+
+
+def parse_headers(pairs: list[str] | None) -> dict[str, str] | None:
+    """Parse ``Name: value`` header pairs (as curl's ``-H``)."""
+    if not pairs:
+        return None
+    headers = {}
+    for pair in pairs:
+        name, sep, value = pair.partition(":")
+        if not sep or not name.strip() or not value.strip():
+            raise ValueError(f'expected "Name: value", got {pair!r}')
+        headers[name.strip()] = value.strip()
+    return headers
 
 
 def parse_tool_args(pairs: list[str]) -> dict[str, Any]:
@@ -39,9 +61,11 @@ def parse_tool_args(pairs: list[str]) -> dict[str, Any]:
 
 
 async def _with_session[T](
-    url: str, action: Callable[[ClientSession], Awaitable[T]]
+    url: str,
+    action: Callable[[ClientSession], Awaitable[T]],
+    headers: dict[str, str] | None = None,
 ) -> T:
-    async with streamablehttp_client(url) as (read, write, _):
+    async with streamablehttp_client(url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             return await action(session)
@@ -71,14 +95,22 @@ def _print_result(result: types.CallToolResult) -> None:
         console.print_json(json.dumps(result.structuredContent))
 
 
+def _parse_headers_or_exit(header: list[str] | None) -> dict[str, str] | None:
+    try:
+        return parse_headers(header)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command("list")
-def list_tools(url: UrlOption = DEFAULT_URL) -> None:
+def list_tools(url: UrlOption = DEFAULT_URL, header: HeaderOption = None) -> None:
     """List the server's tools with their argument schemas."""
+    headers = _parse_headers_or_exit(header)
 
     async def action(session: ClientSession) -> list[types.Tool]:
         return (await session.list_tools()).tools
 
-    console.print(_tools_table(asyncio.run(_with_session(url, action))))
+    console.print(_tools_table(asyncio.run(_with_session(url, action, headers))))
 
 
 @app.command()
@@ -88,8 +120,10 @@ def call(
         list[str] | None, typer.Argument(help="Arguments as key=value pairs.")
     ] = None,
     url: UrlOption = DEFAULT_URL,
+    header: HeaderOption = None,
 ) -> None:
     """Call a tool once and print its result."""
+    headers = _parse_headers_or_exit(header)
     try:
         arguments = parse_tool_args(args or [])
     except ValueError as error:
@@ -98,12 +132,13 @@ def call(
     async def action(session: ClientSession) -> types.CallToolResult:
         return await session.call_tool(tool, arguments)
 
-    _print_result(asyncio.run(_with_session(url, action)))
+    _print_result(asyncio.run(_with_session(url, action, headers)))
 
 
 @app.command()
-def repl(url: UrlOption = DEFAULT_URL) -> None:
+def repl(url: UrlOption = DEFAULT_URL, header: HeaderOption = None) -> None:
     """Interactive loop on a single session: `list`, `<tool> key=value ...`, `quit`."""
+    headers = _parse_headers_or_exit(header)
 
     async def action(session: ClientSession) -> None:
         tools = (await session.list_tools()).tools
@@ -132,4 +167,4 @@ def repl(url: UrlOption = DEFAULT_URL) -> None:
             except Exception as error:  # noqa: BLE001 - keep the repl alive
                 console.print(f"[red]{error}[/red]")
 
-    asyncio.run(_with_session(url, action))
+    asyncio.run(_with_session(url, action, headers))

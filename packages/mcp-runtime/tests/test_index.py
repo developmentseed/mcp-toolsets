@@ -70,6 +70,7 @@ def test_index_route(monkeypatch):
             url=f"{public_url}/{service.toolset}/mcp",
             status="ok",
             tools=["search_datasets"],
+            credential_headers=["x-demo-token"],
         )
 
     monkeypatch.setattr(mcp_runtime.index, "fetch_toolset_services", fake_fetch)
@@ -91,6 +92,7 @@ def test_index_route(monkeypatch):
                 "url": "https://mcp.example.com/dataset-search/mcp",
                 "status": "ok",
                 "tools": ["search_datasets"],
+                "credential_headers": ["x-demo-token"],
             }
         ],
     }

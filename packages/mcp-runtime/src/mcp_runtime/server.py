@@ -51,6 +51,24 @@ def load_tools(module_name: str) -> list[BaseTool]:
     return list(tools)
 
 
+def load_credential_headers(module_name: str) -> list[str]:
+    """Return a tools module's optional ``CREDENTIAL_HEADERS`` export.
+
+    Names of per-user HTTP headers the toolset's tools read (via
+    ``mcp_runtime.credentials``). Advertised in ``/health`` and the index so
+    clients attach each credential only to the toolsets that declare it.
+    """
+    module = importlib.import_module(module_name)
+    headers = getattr(module, "CREDENTIAL_HEADERS", [])
+    if not isinstance(headers, list) or not all(
+        isinstance(header, str) and header for header in headers
+    ):
+        raise RuntimeError(
+            f"{module_name}.CREDENTIAL_HEADERS must be a list of header names"
+        )
+    return sorted(header.lower() for header in headers)
+
+
 def build_server(
     toolset: str,
     module_name: str | None = None,
@@ -58,7 +76,9 @@ def build_server(
     port: int = 8000,
 ) -> FastMCP:
     """Build a stateless FastMCP server exposing the toolset's TOOLS."""
-    tools = load_tools(module_name or toolset_module_name(toolset))
+    module_name = module_name or toolset_module_name(toolset)
+    tools = load_tools(module_name)
+    credential_headers = load_credential_headers(module_name)
     server = FastMCP(
         name=f"mcp-{toolset}",
         tools=[to_fastmcp(tool) for tool in tools],
@@ -71,7 +91,13 @@ def build_server(
 
     @server.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> Response:
-        return JSONResponse({"status": "ok", "tools": tool_names})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "tools": tool_names,
+                "credential_headers": credential_headers,
+            }
+        )
 
     return server
 
