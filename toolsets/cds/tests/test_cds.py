@@ -3,8 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
+from mcp_runtime.credentials import MissingCredentialError, header_context
 
-from cds.tools import TOOLS
+from cds.client import CDS_TOKEN_HEADER, make_client
+from cds.tools import CREDENTIAL_HEADERS, TOOLS
 from cds.tools.apply_constraints import _call as _apply_call
 from cds.tools.get_dataset_schema import _call as _schema_call
 from cds.tools.get_dataset_schema import _parse_parameter
@@ -58,8 +61,11 @@ CATALOGUE_RESPONSE = {
 
 
 def _mock_client(method: str, response: httpx.Response) -> MagicMock:
+    """A stand-in for make_client(): async-with-able, one canned response."""
     client = MagicMock()
     setattr(client, method, AsyncMock(return_value=response))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
     return client
 
 
@@ -133,7 +139,7 @@ def test_parse_optional_field_with_default_and_enum() -> None:
 async def test_get_dataset_schema_parses_all_fields() -> None:
     client = _mock_client("get", httpx.Response(200, json=ERA5_PROCESS_RESPONSE))
 
-    with patch("cds.tools.get_dataset_schema.get_client", return_value=client):
+    with patch("cds.tools.get_dataset_schema.make_client", return_value=client):
         result = await _schema_call("reanalysis-era5-land")
 
     assert result["dataset"] == "reanalysis-era5-land"
@@ -158,7 +164,7 @@ async def test_get_dataset_schema_parses_all_fields() -> None:
 async def test_get_dataset_schema_not_found() -> None:
     client = _mock_client("get", httpx.Response(404, json={"detail": "not found"}))
 
-    with patch("cds.tools.get_dataset_schema.get_client", return_value=client):
+    with patch("cds.tools.get_dataset_schema.make_client", return_value=client):
         result = await _schema_call("bad-dataset")
 
     assert result["error"] == "not_found"
@@ -173,7 +179,7 @@ async def test_get_dataset_schema_not_found() -> None:
 async def test_apply_constraints_filters_empty_lists() -> None:
     client = _mock_client("post", httpx.Response(200, json=CONSTRAINTS_RESPONSE))
 
-    with patch("cds.tools.apply_constraints.get_client", return_value=client):
+    with patch("cds.tools.apply_constraints.make_client", return_value=client):
         result = await _apply_call(
             "reanalysis-era5-land", {"year": "2024", "month": "01"}
         )
@@ -186,7 +192,7 @@ async def test_apply_constraints_filters_empty_lists() -> None:
 async def test_apply_constraints_sends_inputs_wrapper() -> None:
     client = _mock_client("post", httpx.Response(200, json=CONSTRAINTS_RESPONSE))
 
-    with patch("cds.tools.apply_constraints.get_client", return_value=client):
+    with patch("cds.tools.apply_constraints.make_client", return_value=client):
         await _apply_call("reanalysis-era5-land", {"year": "2024", "month": "01"})
 
     _, call_kwargs = client.post.call_args
@@ -196,7 +202,7 @@ async def test_apply_constraints_sends_inputs_wrapper() -> None:
 async def test_apply_constraints_not_found() -> None:
     client = _mock_client("post", httpx.Response(404, json={"detail": "not found"}))
 
-    with patch("cds.tools.apply_constraints.get_client", return_value=client):
+    with patch("cds.tools.apply_constraints.make_client", return_value=client):
         result = await _apply_call("bad-dataset", {})
 
     assert result["error"] == "not_found"
@@ -324,3 +330,26 @@ def test_parse_no_schema_key() -> None:
     assert result["type"] == "unknown"
     assert result["required"] is True
     assert result["title"] == "Mystery field"
+
+
+# ---------------------------------------------------------------------------
+# Per-user credentials
+# ---------------------------------------------------------------------------
+
+
+def test_credential_headers_exported() -> None:
+    assert CREDENTIAL_HEADERS == [CDS_TOKEN_HEADER] == ["x-cds-token"]
+
+
+async def test_client_authenticates_as_the_calling_user() -> None:
+    with header_context({CDS_TOKEN_HEADER: "user-a-key"}):
+        async with make_client() as client:
+            assert client.headers["PRIVATE-TOKEN"] == "user-a-key"
+    with header_context({CDS_TOKEN_HEADER: "user-b-key"}):
+        async with make_client() as client:
+            assert client.headers["PRIVATE-TOKEN"] == "user-b-key"
+
+
+def test_client_requires_the_credential() -> None:
+    with pytest.raises(MissingCredentialError, match=CDS_TOKEN_HEADER):
+        make_client()

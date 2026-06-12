@@ -2,31 +2,30 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from ._client import get_client
+from ..client import make_client
 from ._errors import classify_http_error, not_ready_error, transient_error
 from ._retry import TRANSIENT_EXC, with_retry
 
 
 @with_retry
 async def _call(job_id: str) -> dict[str, Any]:
-    client = get_client()
+    async with make_client() as client:
+        # Confirm the job is successful before fetching assets.
+        status_resp = await client.get(f"/jobs/{job_id}")
+        if status_resp.status_code >= 500:
+            status_resp.raise_for_status()
+        if status_resp.status_code != 200:
+            return classify_http_error(status_resp)
 
-    # Confirm the job is successful before fetching assets.
-    status_resp = await client.get(f"/jobs/{job_id}")
-    if status_resp.status_code >= 500:
-        status_resp.raise_for_status()
-    if status_resp.status_code != 200:
-        return classify_http_error(status_resp)
+        status: str = status_resp.json().get("status", "unknown")
+        if status != "successful":
+            return not_ready_error(job_id, status)
 
-    status: str = status_resp.json().get("status", "unknown")
-    if status != "successful":
-        return not_ready_error(job_id, status)
-
-    results_resp = await client.get(f"/jobs/{job_id}/results")
-    if results_resp.status_code >= 500:
-        results_resp.raise_for_status()
-    if results_resp.status_code != 200:
-        return classify_http_error(results_resp)
+        results_resp = await client.get(f"/jobs/{job_id}/results")
+        if results_resp.status_code >= 500:
+            results_resp.raise_for_status()
+        if results_resp.status_code != 200:
+            return classify_http_error(results_resp)
 
     try:
         val = results_resp.json()["asset"]["value"]

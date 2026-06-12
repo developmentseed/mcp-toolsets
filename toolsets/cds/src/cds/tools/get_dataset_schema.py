@@ -2,7 +2,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from ._client import get_client
+from ..client import make_client
 from ._errors import classify_http_error, not_found_error, transient_error
 from ._retry import TRANSIENT_EXC, with_retry
 
@@ -84,9 +84,10 @@ def _parse_parameter(spec: dict[str, Any]) -> dict[str, Any]:
 
 @with_retry
 async def _call(dataset: str) -> dict[str, Any]:
-    resp = await get_client().get(f"/processes/{dataset}")
-    if resp.status_code >= 500:
-        resp.raise_for_status()
+    async with make_client() as client:
+        resp = await client.get(f"/processes/{dataset}")
+        if resp.status_code >= 500:
+            resp.raise_for_status()
     if resp.status_code == 404:
         return not_found_error(f"Dataset {dataset!r} not found.")
     if resp.status_code != 200:

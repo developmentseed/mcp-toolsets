@@ -2,19 +2,20 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from ._client import get_client
+from ..client import make_client
 from ._errors import classify_http_error, not_found_error, transient_error
 from ._retry import TRANSIENT_EXC, with_retry
 
 
 @with_retry
 async def _call(dataset: str, partial_request: dict[str, Any]) -> dict[str, Any]:
-    resp = await get_client().post(
-        f"/processes/{dataset}/constraints",
-        json={"inputs": partial_request},
-    )
-    if resp.status_code >= 500:
-        resp.raise_for_status()
+    async with make_client() as client:
+        resp = await client.post(
+            f"/processes/{dataset}/constraints",
+            json={"inputs": partial_request},
+        )
+        if resp.status_code >= 500:
+            resp.raise_for_status()
     if resp.status_code == 404:
         return not_found_error(f"Dataset {dataset!r} not found.")
     if resp.status_code != 200:
