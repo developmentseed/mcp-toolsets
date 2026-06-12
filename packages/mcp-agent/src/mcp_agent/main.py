@@ -7,11 +7,16 @@ interactive chat. Requires ``MISTRAL_API_KEY``.
 """
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Annotated, Any, cast
 
 import httpx
 import typer
 from langchain.agents import create_agent
+from mcp.client.streamable_http import create_mcp_http_client
+from mcp.shared.exceptions import McpError
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -53,21 +58,164 @@ def connections_from(url: str, payload: Any) -> dict[str, Any]:
     return {"server": {"transport": "streamable_http", "url": url}}
 
 
-def fetch_connections(url: str) -> dict[str, Any]:
-    """Resolve an index or single-server URL to a MultiServerMCPClient config."""
+def credential_headers_from(payload: Any) -> dict[str, list[str]] | None:
+    """Per-toolset credential header names from an index payload.
+
+    ``None`` means the payload was not an index (a direct single-server URL),
+    so no declarations are available.
+    """
+    if not (isinstance(payload, dict) and isinstance(payload.get("toolsets"), list)):
+        return None
+    return {
+        entry["name"]: [
+            header.lower() for header in entry.get("credential_headers", [])
+        ]
+        for entry in payload["toolsets"]
+        if isinstance(entry, dict) and entry.get("name")
+    }
+
+
+# Connection failures an agent should report rather than crash on.
+CONNECT_ERRORS = (httpx.HTTPError, OSError, McpError)
+
+
+def first_leaf(error: BaseException) -> BaseException:
+    """Unwrap (possibly nested) ExceptionGroups to the first real exception."""
+    while isinstance(error, BaseExceptionGroup):
+        error = error.exceptions[0]
+    return error
+
+
+def connect_error_hint(url: str) -> str:
+    """A nudge for the most common misconfiguration: a missing /mcp path."""
+    if url.rstrip("/").endswith("/mcp"):
+        return ""
+    return (
+        " Hint: single-toolset servers serve MCP under /mcp "
+        "(e.g. http://localhost:8000/mcp); only an index is served at the root."
+    )
+
+
+def health_url_for(url: str) -> str | None:
+    """Derive a direct MCP endpoint's sibling /health URL, if there is one."""
+    base = url.rstrip("/")
+    return base.removesuffix("/mcp") + "/health" if base.endswith("/mcp") else None
+
+
+async def single_server_credential_headers(
+    client: httpx.AsyncClient, url: str
+) -> dict[str, list[str]] | None:
+    """Ask a direct MCP endpoint's /health which credential headers it reads.
+
+    Returns ``None`` when there is no health route or it doesn't advertise
+    credentials (e.g. a non-mcp-toolsets server).
+    """
+    health_url = health_url_for(url)
+    if health_url is None:
+        return None
     try:
-        payload = httpx.get(url, follow_redirects=True, timeout=10.0).json()
-    except (httpx.HTTPError, ValueError):
-        payload = None
-    return connections_from(url, payload)
+        health = (await client.get(health_url)).json()
+        headers = health.get("credential_headers")
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return None
+    if not isinstance(headers, list):
+        return None
+    return {"server": [str(header).lower() for header in headers]}
+
+
+async def fetch_connections(
+    url: str,
+) -> tuple[dict[str, Any], dict[str, list[str]] | None]:
+    """Resolve a URL to a MultiServerMCPClient config plus credential needs."""
+    async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+        try:
+            payload = (await client.get(url)).json()
+        except (httpx.HTTPError, ValueError):
+            payload = None
+        connections = connections_from(url, payload)
+        required = credential_headers_from(payload)
+        if required is None:
+            required = await single_server_credential_headers(client, url)
+    return connections, required
+
+
+_credentials: ContextVar[dict[str, str] | None] = ContextVar(
+    "user_credentials", default=None
+)
+
+
+@contextmanager
+def user_credentials(headers: dict[str, str] | None) -> Iterator[None]:
+    """Provide the calling user's credential headers for the duration.
+
+    This is how an agent passes a user's secrets to the tools without the
+    model ever seeing them: they ride the MCP transport, not the conversation.
+    The agent is built once; wrap each turn (``run_turn``) in this and the
+    tool calls made inside read the values at request time, so one long-lived
+    agent serves many users with different credentials.
+    """
+    token = _credentials.set(headers)
+    try:
+        yield
+    finally:
+        _credentials.reset(token)
+
+
+def credential_client_factory(allowed: list[str] | None) -> Any:
+    """Build an httpx client factory injecting the current user's credentials.
+
+    Only headers named in ``allowed`` (the toolset's advertised declaration)
+    are injected, so unrelated toolsets never receive them; ``None`` means no
+    declaration was discoverable (a server the user pointed at directly) and
+    every provided header is sent.
+    """
+    wanted = None if allowed is None else {header.lower() for header in allowed}
+
+    def factory(
+        headers: dict[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,
+        auth: httpx.Auth | None = None,
+    ) -> httpx.AsyncClient:
+        provided = _credentials.get() or {}
+        send = {
+            header: value
+            for header, value in provided.items()
+            if wanted is None or header.lower() in wanted
+        }
+        return create_mcp_http_client(
+            headers={**(headers or {}), **send}, timeout=timeout, auth=auth
+        )
+
+    return factory
+
+
+def with_credential_support(
+    connections: dict[str, Any], required: dict[str, list[str]] | None
+) -> dict[str, Any]:
+    """Wire each connection to inject per-user credentials at call time."""
+    return {
+        name: {
+            **connection,
+            "httpx_client_factory": credential_client_factory(
+                None if required is None else required.get(name, [])
+            ),
+        }
+        for name, connection in connections.items()
+    }
 
 
 async def build_agent(
     url: str, model: str, api_key: SecretStr
 ) -> tuple[Any, dict[str, Any], list[BaseTool]]:
-    """Discover the servers behind ``url`` and build a tool-calling agent."""
-    connections = fetch_connections(url)
-    tools = await MultiServerMCPClient(connections).get_tools()
+    """Discover the servers behind ``url`` and build a tool-calling agent.
+
+    Built once per process/session: per-user credentials are not baked in but
+    read from :func:`user_credentials` on every tool call.
+    """
+    connections, required = await fetch_connections(url)
+    tools = await MultiServerMCPClient(
+        with_credential_support(connections, required)
+    ).get_tools()
     agent = create_agent(
         ChatMistralAI(model_name=model, api_key=api_key),
         tools,
@@ -89,11 +237,13 @@ async def run_turn(
 async def chat_loop(url: str, model: str, api_key: SecretStr) -> None:
     try:
         agent, connections, tools = await build_agent(url, model, api_key)
-    except* (httpx.HTTPError, OSError) as group:
+    except* CONNECT_ERRORS as group:
         console.print(
             f"[red]Could not reach the MCP server(s) behind {url}: "
-            f"{group.exceptions[0]}[/red]"
+            f"{first_leaf(group)}[/red]"
         )
+        if hint := connect_error_hint(url):
+            console.print(f"[yellow]{hint.strip()}[/yellow]")
         raise typer.Exit(1) from None
 
     console.print(

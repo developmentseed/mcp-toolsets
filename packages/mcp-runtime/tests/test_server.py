@@ -1,9 +1,13 @@
+import sys
+import types
+
 import pytest
 from pydantic import ValidationError
 
 from mcp_runtime.server import (
     RuntimeSettings,
     build_server,
+    load_credential_headers,
     load_tools,
     toolset_module_name,
 )
@@ -50,6 +54,19 @@ def test_load_tools_missing_module():
 def test_load_tools_missing_export():
     with pytest.raises(RuntimeError, match="non-empty TOOLS"):
         load_tools("mcp_runtime.server")
+
+
+def test_load_credential_headers():
+    assert load_credential_headers("credential_demo.tools") == ["x-demo-token"]
+    assert load_credential_headers("dataset_search.tools") == []
+
+
+def test_load_credential_headers_rejects_bad_export(monkeypatch):
+    module = types.ModuleType("bad_toolset_tools")
+    setattr(module, "CREDENTIAL_HEADERS", "x-demo-token")  # noqa: B010 - not a list
+    monkeypatch.setitem(sys.modules, "bad_toolset_tools", module)
+    with pytest.raises(RuntimeError, match="CREDENTIAL_HEADERS"):
+        load_credential_headers("bad_toolset_tools")
 
 
 async def test_build_server_exposes_tools():

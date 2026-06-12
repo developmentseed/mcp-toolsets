@@ -44,12 +44,18 @@ class ToolsetService(NamedTuple):
 
 
 class ToolsetEntry(BaseModel):
-    """One deployed toolset in the directory."""
+    """One deployed toolset in the directory.
+
+    ``credential_headers`` names the per-user HTTP headers the toolset's
+    tools read; clients should send those credentials only to this toolset's
+    connection.
+    """
 
     name: str
     url: str
     status: Literal["ok", "unreachable"]
     tools: list[str]
+    credential_headers: list[str] = []
 
 
 class Connection(BaseModel):
@@ -111,12 +117,18 @@ async def describe(
     try:
         response = await client.get(f"{service.base_url}/health")
         response.raise_for_status()
-        tools = response.json().get("tools", [])
+        health = response.json()
     except httpx.HTTPError:
         return ToolsetEntry(
             name=service.toolset, url=url, status="unreachable", tools=[]
         )
-    return ToolsetEntry(name=service.toolset, url=url, status="ok", tools=tools)
+    return ToolsetEntry(
+        name=service.toolset,
+        url=url,
+        status="ok",
+        tools=health.get("tools", []),
+        credential_headers=health.get("credential_headers", []),
+    )
 
 
 def build_app(public_url: str) -> FastAPI:
