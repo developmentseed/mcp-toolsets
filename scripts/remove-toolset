@@ -29,3 +29,14 @@ echo "Removed $dir and deregistered it from the workspace."
 echo "Merge to main: the deploy workflow uninstalls the mcp-$name release."
 echo "Not removed automatically: out-of-band Secrets the toolset listed in"
 echo "toolset.yaml, and its images in GHCR."
+
+# Other code or docs may still reference the toolset (README examples, tests
+# using it as a fixture, ...). Surface them so the removal ships clean.
+pkg=$(echo "$name" | tr '-' '_')
+refs=$(git grep -l -e "$name" -e "$pkg" -- ':!uv.lock' 2>/dev/null || true)
+if [ -n "$refs" ]; then
+    echo
+    echo "Heads-up: '$name' is still referenced in:"
+    echo "$refs" | sed 's/^/  /'
+    echo "Update or remove those references before merging (./scripts/test)."
+fi

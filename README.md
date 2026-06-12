@@ -34,23 +34,23 @@ uv sync                # installs every workspace member into one .venv
 ./scripts/lint         # ruff + mypy (./scripts/format to autofix)
 
 # Serve a toolset locally
-TOOLSET=dataset-search uv run mcp-serve
+TOOLSET=aoi-generator uv run mcp-serve
 
 # Serve more toolsets alongside it, each on its own port
-TOOLSET=aoi-generator PORT=8001 uv run mcp-serve
+TOOLSET=credential-demo PORT=8001 uv run mcp-serve
 
 # Talk to them from another shell
 uv run mcp-cli list
-uv run mcp-cli call search_datasets query=era5 limit=3
+uv run mcp-cli call aoi_from_place place=alps buffer_km=25
 uv run mcp-cli repl
-uv run mcp-cli list --url http://localhost:8001/mcp
+uv run mcp-cli call whoami --url http://localhost:8001/mcp -H "X-Demo-Token: s3cret"
 ```
 
 `mcp-cli` defaults to `http://localhost:8000/mcp`; pass `--url` to point
 elsewhere. Each `mcp-serve` process serves exactly one toolset — the same
 shape as production, where every toolset is its own pod and Service.
 Toolsets are also importable directly (e.g.
-`from dataset_search.tools import TOOLS`) for in-process use in tests,
+`from aoi_generator.tools import TOOLS`) for in-process use in tests,
 notebooks or an agent repo.
 
 ## Adding a toolset
@@ -136,11 +136,11 @@ images in GHCR (delete the package from the repo settings if you care).
   cluster RBAC:
 
 ```sh
-kubectl -n mcp-toolsets port-forward svc/mcp-dataset-search 8000:8000
+kubectl -n mcp-toolsets port-forward svc/mcp-aoi-generator 8000:8000
 uv run mcp-cli list
 ```
 
-Build an image locally with `docker build --build-arg TOOLSET=dataset-search .`.
+Build an image locally with `docker build --build-arg TOOLSET=aoi-generator .`.
 
 ## Kubernetes cluster setup
 
@@ -255,7 +255,7 @@ running:
 
 ```sh
 curl https://<host>/ | jq
-uv run mcp-cli list --url https://<host>/dataset-search/mcp
+uv run mcp-cli list --url https://<host>/aoi-generator/mcp
 ```
 
 The index's `connections` key is shaped for
