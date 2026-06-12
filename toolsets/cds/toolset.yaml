@@ -1,0 +1,6 @@
+# Optional Helm values overrides for this toolset (see charts/mcp-toolset/values.yaml).
+# The cds-credentials Secret must exist in the namespace and provide CDS_API_KEY
+# (create it out-of-band: kubectl -n mcp-toolsets create secret generic
+# cds-credentials --from-literal=CDS_API_KEY=...).
+secrets:
+  - cds-credentials

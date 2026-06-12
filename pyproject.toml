@@ -10,6 +10,7 @@ dependencies = [
     "mcp-agent",
     "dataset-search",
     "aoi-generator",
+    "cds",
 ]
 
 [dependency-groups]
@@ -32,6 +33,7 @@ mcp-cli = { workspace = true }
 mcp-agent = { workspace = true }
 dataset-search = { workspace = true }
 aoi-generator = { workspace = true }
+cds = { workspace = true }
 
 [tool.ruff]
 line-length = 88
