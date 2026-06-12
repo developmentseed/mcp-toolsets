@@ -93,6 +93,22 @@ tools and merge.
 Conventions: directory `toolsets/<name>` (kebab-case) → module
 `<name_snake_case>.tools` → service `mcp-<name>`.
 
+## Removing a toolset
+
+```sh
+./scripts/remove-toolset my-toolset
+```
+
+Merge to `main`. Removal is GitOps like everything else: the deploy
+workflow reconciles the cluster against `toolsets/`, uninstalling any
+`mcp-<name>` release whose directory no longer exists — Deployment, Service
+and Ingress with it; the index drops the entry automatically. Mind that
+this means merging a deleted directory tears down the live service.
+
+Not removed automatically: out-of-band Secrets the toolset listed in its
+`toolset.yaml` (`kubectl -n mcp-toolsets delete secret <name>`) and its
+images in GHCR (delete the package from the repo settings if you care).
+
 ## Deployment
 
 - **ci.yml** (PRs + main): lint, tests, `helm lint`, and a no-push Docker
@@ -102,6 +118,8 @@ Conventions: directory `toolsets/<name>` (kebab-case) → module
   root `pyproject.toml`) rebuild *all* toolsets — then per toolset: build and
   push `ghcr.io/<owner>/<repo>/mcp-<name>:<sha>` and
   `helm upgrade --install mcp-<name> charts/mcp-toolset -n mcp-toolsets`.
+  A reconcile job also uninstalls releases whose `toolsets/<name>` directory
+  is gone — see [Removing a toolset](#removing-a-toolset).
 - **Required secret**: `KUBE_CONFIG` — a kubeconfig with rights to manage the
   `mcp-toolsets` namespace. Images push to GHCR with the built-in
   `GITHUB_TOKEN`.

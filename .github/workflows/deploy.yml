@@ -86,6 +86,36 @@ jobs:
             --set image.tag="${{ github.sha }}" \
             $values
 
+  reconcile:
+    needs: detect
+    # Removing a toolset always touches shared paths (uv.lock, root
+    # pyproject.toml), so any removal lands in a run with a non-empty matrix;
+    # docs-only pushes skip, keeping kubeconfig out of no-op runs.
+    if: needs.detect.outputs.toolsets != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          printf '%s' "${KUBE_CONFIG}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+      - name: Uninstall releases whose toolset directory is gone
+        run: |
+          for release in $(helm list --namespace mcp-toolsets --short); do
+            case "$release" in
+              mcp-index) continue ;;
+              mcp-*) toolset="${release#mcp-}" ;;
+              *) continue ;;
+            esac
+            if [ ! -d "toolsets/$toolset" ]; then
+              echo "Uninstalling $release: toolsets/$toolset no longer exists"
+              helm uninstall "$release" --namespace mcp-toolsets
+            fi
+          done
+
   index:
     needs: detect
     # Skip no-op pushes (e.g. docs): the index image is built from shared code,
