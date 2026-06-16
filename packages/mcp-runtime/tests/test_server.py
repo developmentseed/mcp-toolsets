@@ -2,6 +2,7 @@ import sys
 import types
 
 import pytest
+from langchain_core.tools import tool
 from pydantic import ValidationError
 
 from mcp_runtime.server import (
@@ -11,6 +12,22 @@ from mcp_runtime.server import (
     load_tools,
     toolset_module_name,
 )
+
+
+@tool
+def echo(text: str) -> str:
+    """Echo the text back."""
+    return text
+
+
+def tools_module(monkeypatch, name: str, **attrs) -> str:
+    """Register a synthetic tools module, so tests don't depend on which
+    real toolsets exist in the repo."""
+    module = types.ModuleType(name)
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    monkeypatch.setitem(sys.modules, name, module)
+    return name
 
 
 def test_toolset_module_name():
@@ -56,29 +73,32 @@ def test_load_tools_missing_export():
         load_tools("mcp_runtime.server")
 
 
-def test_load_credential_headers():
-    assert load_credential_headers("credential_demo.tools") == ["x-demo-token"]
-    assert load_credential_headers("dataset_search.tools") == []
+def test_load_credential_headers(monkeypatch):
+    declaring = tools_module(
+        monkeypatch, "declaring_tools", TOOLS=[echo], CREDENTIAL_HEADERS=["X-Fake"]
+    )
+    bare = tools_module(monkeypatch, "bare_tools", TOOLS=[echo])
+    assert load_credential_headers(declaring) == ["x-fake"]
+    assert load_credential_headers(bare) == []
 
 
 def test_load_credential_headers_rejects_bad_export(monkeypatch):
-    module = types.ModuleType("bad_toolset_tools")
-    setattr(module, "CREDENTIAL_HEADERS", "x-demo-token")  # noqa: B010 - not a list
-    monkeypatch.setitem(sys.modules, "bad_toolset_tools", module)
+    bad = tools_module(monkeypatch, "bad_tools", CREDENTIAL_HEADERS="x-fake")
     with pytest.raises(RuntimeError, match="CREDENTIAL_HEADERS"):
-        load_credential_headers("bad_toolset_tools")
+        load_credential_headers(bad)
 
 
-async def test_build_server_exposes_tools():
-    server = build_server("dataset-search")
+async def test_build_server_derives_module_from_toolset_name(monkeypatch):
+    tools_module(monkeypatch, "fake_toolset.tools", TOOLS=[echo])
+    server = build_server("fake-toolset")
     tools = await server.list_tools()
-    names = {tool.name for tool in tools}
-    assert names == {"search_datasets", "get_dataset"}
+    assert {tool.name for tool in tools} == {"echo"}
     for tool in tools:
         assert tool.description
 
 
-async def test_build_server_module_override():
-    server = build_server("anything", module_name="aoi_generator.tools")
+async def test_build_server_module_override(monkeypatch):
+    name = tools_module(monkeypatch, "custom_tools_module", TOOLS=[echo])
+    server = build_server("anything", module_name=name)
     tools = await server.list_tools()
-    assert {tool.name for tool in tools} == {"aoi_from_place", "aoi_from_point"}
+    assert {tool.name for tool in tools} == {"echo"}

@@ -8,7 +8,6 @@ dependencies = [
     "mcp-runtime",
     "mcp-cli",
     "mcp-agent",
-    "dataset-search",
     "aoi-generator",
     "cds",
     "credential-demo",
@@ -32,7 +31,6 @@ members = ["packages/*", "toolsets/*"]
 mcp-runtime = { workspace = true }
 mcp-cli = { workspace = true }
 mcp-agent = { workspace = true }
-dataset-search = { workspace = true }
 aoi-generator = { workspace = true }
 cds = { workspace = true }
 credential-demo = { workspace = true }
