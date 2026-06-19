@@ -53,6 +53,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v3
+      # The cds image bakes in the EQC corpus + index. Pull the latest
+      # successful snapshot (cds-eqc-data.yml) into the build context so
+      # `COPY . .` includes it; fall back to building inline on a cold start.
+      - name: Download EQC data snapshot
+        if: matrix.toolset == 'cds'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: cds-eqc-data.yml
+          name: eqc-data
+          path: toolsets/cds/data
+          if_no_artifact_found: warn
+      - name: Install uv (EQC fallback build)
+        if: matrix.toolset == 'cds'
+        uses: astral-sh/setup-uv@v6
+      - name: Build EQC corpus if snapshot missing
+        if: matrix.toolset == 'cds'
+        working-directory: toolsets/cds
+        run: |
+          if [ -f data/eqc/index.json ]; then
+            echo "Using downloaded eqc-data snapshot."
+          else
+            echo "No eqc-data artifact found; building corpus inline."
+            uv sync --frozen --package cds
+            uv run python scripts/fetch_eqc_corpus.py --workers 2
+          fi
       - uses: docker/build-push-action@v6
         with:
           context: .

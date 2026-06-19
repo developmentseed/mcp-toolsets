@@ -1,15 +1,14 @@
 name: CDS EQC Data Snapshot
 
-# Fetches the CDS EQC corpus, builds the sgrep index, and uploads a tarball to S3.
-# The CDS toolset Docker image can pull this snapshot at build time.
+# Fetches the CDS EQC corpus, builds the sgrep index (incl. the bundled
+# embedding model), and uploads the whole data tree as the `eqc-data` artifact.
+# The cds toolset Docker image bakes this in: deploy.yml downloads the latest
+# successful run's artifact into the build context before building.
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
-
-env:
-  CDS_EQC_S3_URI: ${{ vars.CDS_EQC_S3_URI }}
 
 jobs:
   snapshot:
@@ -31,20 +30,6 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen --package cds
 
-      - name: Configure AWS credentials
-        if: env.CDS_EQC_S3_URI != ''
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Seed from previous snapshot
-        if: env.CDS_EQC_S3_URI != ''
-        run: uv run python scripts/eqc_snapshot.py pull
-        env:
-          CDS_EQC_S3_URI: ${{ env.CDS_EQC_S3_URI }}
-
       - name: Fetch EQC corpus
         run: uv run python scripts/fetch_eqc_corpus.py --workers 2
 
@@ -58,8 +43,10 @@ jobs:
           sys.exit(0 if ok else 1)
           "
 
-      - name: Upload snapshot
-        if: env.CDS_EQC_S3_URI != ''
-        run: uv run python scripts/eqc_snapshot.py push
-        env:
-          CDS_EQC_S3_URI: ${{ env.CDS_EQC_S3_URI }}
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqc-data
+          path: toolsets/cds/data
+          retention-days: 90
+          if-no-files-found: error
