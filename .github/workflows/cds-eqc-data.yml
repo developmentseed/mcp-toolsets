@@ -1,0 +1,65 @@
+name: CDS EQC Data Snapshot
+
+# Fetches the CDS EQC corpus, builds the sgrep index, and uploads a tarball to S3.
+# The CDS toolset Docker image can pull this snapshot at build time.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+env:
+  CDS_EQC_S3_URI: ${{ vars.CDS_EQC_S3_URI }}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: toolsets/cds
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --frozen --package cds
+
+      - name: Configure AWS credentials
+        if: env.CDS_EQC_S3_URI != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Seed from previous snapshot
+        if: env.CDS_EQC_S3_URI != ''
+        run: uv run python scripts/eqc_snapshot.py pull
+        env:
+          CDS_EQC_S3_URI: ${{ env.CDS_EQC_S3_URI }}
+
+      - name: Fetch EQC corpus
+        run: uv run python scripts/fetch_eqc_corpus.py --workers 2
+
+      - name: Sanity-check snapshot
+        run: |
+          uv run python -c "
+          import sys
+          from cds.eqc.sgrep import data_status
+          ok, detail = data_status(min_datasets=1)
+          print(detail)
+          sys.exit(0 if ok else 1)
+          "
+
+      - name: Upload snapshot
+        if: env.CDS_EQC_S3_URI != ''
+        run: uv run python scripts/eqc_snapshot.py push
+        env:
+          CDS_EQC_S3_URI: ${{ env.CDS_EQC_S3_URI }}

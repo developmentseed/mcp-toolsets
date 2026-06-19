@@ -78,6 +78,8 @@ def test_tools_exported() -> None:
     names = {tool.name for tool in TOOLS}
     assert names == {
         "search_datasets",
+        "search_eqc",
+        "get_dataset_eqc",
         "get_dataset_schema",
         "apply_constraints",
         "submit_request",

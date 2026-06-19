@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     cds_api_url: str = "https://cds.climate.copernicus.eu/api/retrieve/v1"
     cds_catalogue_url: str = "https://cds.climate.copernicus.eu/api/catalogue/v1"
+    eqc_data_dir: str = "data/eqc"
+    eqc_index_dir: str = "data/eqc_index"
+    eqc_s3_uri: str | None = None
 
 
 settings = Settings()

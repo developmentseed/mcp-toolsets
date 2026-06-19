@@ -13,11 +13,13 @@ without it.
 from ..client import CDS_TOKEN_HEADER
 from .apply_constraints import apply_constraints
 from .check_credentials import check_credentials
+from .get_dataset_eqc import get_dataset_eqc
 from .get_dataset_schema import get_dataset_schema
 from .get_job_status import get_job_status
 from .get_results import get_results
 from .list_jobs import list_jobs
 from .search_datasets import search_datasets
+from .search_eqc import search_eqc
 from .submit_request import submit_request
 
 __all__ = [
@@ -25,16 +27,20 @@ __all__ = [
     "TOOLS",
     "apply_constraints",
     "check_credentials",
+    "get_dataset_eqc",
     "get_dataset_schema",
     "get_job_status",
     "get_results",
     "list_jobs",
     "search_datasets",
+    "search_eqc",
     "submit_request",
 ]
 
 TOOLS = [
     search_datasets,
+    search_eqc,
+    get_dataset_eqc,
     get_dataset_schema,
     apply_constraints,
     submit_request,
