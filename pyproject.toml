@@ -43,7 +43,7 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S"]
-"scripts/**" = ["S"]
+"**/scripts/**" = ["S"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "toolsets"]
@@ -57,5 +57,5 @@ warn_redundant_casts = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["langchain_mcp_adapters.*"]
+module = ["langchain_mcp_adapters.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true

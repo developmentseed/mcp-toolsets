@@ -5,7 +5,10 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 COPY . .
 RUN uv sync --frozen --no-dev --no-editable --package "${TOOLSET}"
-RUN if [ "${TOOLSET}" = "cds" ] && [ -n "${CDS_EQC_S3_URI:-}" ]; then \
+# Always create the dir so the COPY below succeeds for every toolset; only
+# the cds image populates it, and only when an EQC snapshot URI is provided.
+RUN mkdir -p toolsets/cds/data && \
+    if [ "${TOOLSET}" = "cds" ] && [ -n "${CDS_EQC_S3_URI:-}" ]; then \
       cd toolsets/cds && CDS_EQC_S3_URI="${CDS_EQC_S3_URI}" uv run python scripts/eqc_snapshot.py pull; \
     fi
 

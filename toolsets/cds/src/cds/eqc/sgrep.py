@@ -73,9 +73,7 @@ def data_status(
     n_chunks = np.load(index_dir / "embeddings.npy", mmap_mode="r").shape[0]
     n_meta = sum(
         1
-        for line in (index_dir / "meta.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        for line in (index_dir / "meta.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     )
     if n_chunks != n_meta:
@@ -145,9 +143,7 @@ def _load_index(index_dir_str: str) -> tuple[np.ndarray, list[dict], float, Path
     config = json.loads((index_dir / "config.json").read_text(encoding="utf-8"))
     meta = [
         json.loads(line)
-        for line in (index_dir / "meta.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        for line in (index_dir / "meta.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     return emb, meta, config["scale"], _resolve_data_dir(config["data_dir"], default)
@@ -186,7 +182,9 @@ def query_index(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="cds-eqc-sgrep", description="EQC semantic grep")
+    parser = argparse.ArgumentParser(
+        prog="cds-eqc-sgrep", description="EQC semantic grep"
+    )
     sub = parser.add_subparsers(dest="cmd")
 
     idx = sub.add_parser("index", help="build the search index")

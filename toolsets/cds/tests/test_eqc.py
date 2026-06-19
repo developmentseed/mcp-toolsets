@@ -41,7 +41,9 @@ def eqc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, era5_page: dict):
         json.dumps(era5_page, ensure_ascii=False),
         encoding="utf-8",
     )
-    write_dataset_markdown(dataset_id=dataset_id, page_json=era5_page, data_dir=data_dir)
+    write_dataset_markdown(
+        dataset_id=dataset_id, page_json=era5_page, data_dir=data_dir
+    )
 
     index = {
         "build_id": "test-build",
@@ -93,7 +95,9 @@ def test_extract_eqc_prose(era5_page: dict) -> None:
 def test_clean_prose_strips_html() -> None:
     from cds.eqc.clean import clean_prose
 
-    raw = "<span style='color: #777;'>Evaluated on 01/04/2025</span>\n\nHello **world**."
+    raw = (
+        "<span style='color: #777;'>Evaluated on 01/04/2025</span>\n\nHello **world**."
+    )
     cleaned = clean_prose(raw)
     assert "<span" not in cleaned
     assert "Evaluated on 01/04/2025" in cleaned
@@ -167,7 +171,9 @@ async def test_search_eqc_tool(eqc_env: Path) -> None:
 
 
 async def test_get_dataset_eqc_tool(eqc_env: Path) -> None:
-    result = await get_dataset_eqc.ainvoke({"dataset_id": "reanalysis-era5-single-levels"})
+    result = await get_dataset_eqc.ainvoke(
+        {"dataset_id": "reanalysis-era5-single-levels"}
+    )
     assert result["has_eqc"] is True
     assert result["prose"]
     assert result["qa_total"] > 0
@@ -178,14 +184,18 @@ async def test_get_dataset_eqc_missing(eqc_env: Path) -> None:
     assert result["error"] == "not_in_corpus"
 
 
-async def test_search_eqc_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_search_eqc_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("EQC_DATA_DIR", str(tmp_path / "missing" / "eqc"))
     monkeypatch.setenv("EQC_INDEX_DIR", str(tmp_path / "missing" / "eqc_index"))
     results = await search_eqc.ainvoke({"query": "temperature"})
     assert results[0]["error"] == "eqc_corpus_unavailable"
 
 
-def test_sync_corpus_skips_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sync_corpus_skips_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     data_dir = tmp_path / "data" / "eqc"
     monkeypatch.setenv("EQC_DATA_DIR", str(data_dir))
     monkeypatch.setenv("EQC_INDEX_DIR", str(tmp_path / "data" / "eqc_index"))

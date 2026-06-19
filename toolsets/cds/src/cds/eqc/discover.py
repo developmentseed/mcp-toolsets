@@ -22,8 +22,7 @@ def dataset_url(dataset_id: str) -> str:
 
 def next_data_url(dataset_id: str, build_id: str) -> str:
     return (
-        f"{CDS_BASE}/_next/data/{build_id}/en/datasets/{dataset_id}.json"
-        f"?tab={QA_TAB}"
+        f"{CDS_BASE}/_next/data/{build_id}/en/datasets/{dataset_id}.json?tab={QA_TAB}"
     )
 
 
@@ -43,13 +42,12 @@ def list_catalogue_datasets(
 ) -> list[dict[str, Any]]:
     """Return STAC catalogue collections as {id, title} dicts."""
     own_client = client is None
-    if own_client:
+    if client is None:
         client = httpx.Client(
             headers={"User-Agent": USER_AGENT},
             timeout=120.0,
             follow_redirects=True,
         )
-    assert client is not None
     try:
         response = client.get(
             f"{settings.cds_catalogue_url}/datasets",

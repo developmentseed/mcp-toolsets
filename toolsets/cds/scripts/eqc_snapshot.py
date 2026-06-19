@@ -71,7 +71,10 @@ def push() -> int:
 
     for path in _PAYLOAD_DIRS:
         if not path.exists():
-            print(f"Missing payload dir {path}; run fetch_eqc_corpus.py first.", file=sys.stderr)
+            print(
+                f"Missing payload dir {path}; run fetch_eqc_corpus.py first.",
+                file=sys.stderr,
+            )
             return 1
 
     bucket, prefix = _parse_s3_uri(uri)

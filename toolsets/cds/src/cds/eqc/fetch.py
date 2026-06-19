@@ -67,7 +67,11 @@ def _process_dataset(
 ) -> dict[str, Any]:
     raw_path = raw_dir(data_dir) / f"{dataset_id}.json"
     existing = next(
-        (e for e in load_index(data_dir).get("datasets", []) if e.get("id") == dataset_id),
+        (
+            e
+            for e in load_index(data_dir).get("datasets", [])
+            if e.get("id") == dataset_id
+        ),
         None,
     )
     if existing and not force and raw_path.exists():
@@ -172,7 +176,8 @@ def sync_corpus(
     if workers <= 1:
         for i, item in enumerate(items):
             if i > 0:
-                time.sleep(random.uniform(delay_min, delay_max))
+                # Random jitter between requests, not security-sensitive.
+                time.sleep(random.uniform(delay_min, delay_max))  # noqa: S311
             dataset_id, entry, err = run_one(item)
             if err == "skipped":
                 stats["skipped"] += 1
