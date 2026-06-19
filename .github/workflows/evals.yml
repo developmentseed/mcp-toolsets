@@ -1,0 +1,78 @@
+name: Evals
+
+# Manual only: agent evals are slow, nondeterministic, and cost Mistral tokens,
+# so they are not wired into PR/push CI. Trigger from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      toolset:
+        description: Toolset to serve locally for the agent to drive.
+        type: string
+        default: aoi-generator
+      group:
+        description: Only run cases in this group (blank = all).
+        type: string
+        default: ""
+      gid:
+        description: Sheet tab gid.
+        type: string
+        default: "0"
+      sample:
+        description: Cap the number of cases (blank = no cap).
+        type: string
+        default: ""
+      workers:
+        description: Concurrent agent runs.
+        type: string
+        default: "2"
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+      # Optional toolset credential; passed through only if the secret is set.
+      CDS_TOKEN: ${{ secrets.CDS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      # Serve the toolset locally so the run needs no live cluster. (Point
+      # --url at the deployed index instead if you'd rather hit production.)
+      # Inputs go through env, not ${{ }} interpolation, to avoid shell quoting
+      # surprises and injection.
+      - name: Start toolset MCP server
+        env:
+          TOOLSET: ${{ inputs.toolset }}
+          PORT: "8000"
+        run: |
+          uv run mcp-serve &
+          for _ in $(seq 1 20); do
+            curl -sf http://localhost:8000/health && break
+            sleep 1
+          done
+
+      - name: Run evals
+        env:
+          GROUP: ${{ inputs.group }}
+          GID: ${{ inputs.gid }}
+          SAMPLE: ${{ inputs.sample }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          args=(run --url http://localhost:8000/mcp --gid "$GID" \
+                --workers "$WORKERS" --out outputs)
+          if [ -n "$GROUP" ]; then args+=(--group "$GROUP"); fi
+          if [ -n "$SAMPLE" ]; then args+=(--sample "$SAMPLE"); fi
+          if [ -n "$CDS_TOKEN" ]; then
+            args+=(--credential "x-cds-token: $CDS_TOKEN")
+          fi
+          uv run mcp-evals "${args[@]}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: outputs/

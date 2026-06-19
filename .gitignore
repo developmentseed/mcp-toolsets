@@ -13,6 +13,9 @@ dist/
 .chainlit/
 chainlit.md
 
+# Eval results (mcp-evals default output dir)
+outputs/
+
 # Tooling caches
 .mypy_cache/
 .pytest_cache/

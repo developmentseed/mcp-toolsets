@@ -359,6 +359,28 @@ with header_context({"x-demo-token": "secret"}):
     whoami.invoke({})
 ```
 
+## Evaluations
+
+`mcp-evals` runs the `mcp-agent` against a set of eval cases and scores whether
+it called the right tools and gave a good answer. Cases live in a shared Google
+Sheet (read with zero auth via its CSV export, so collaborators can edit data
+without touching code) or a local CSV; see
+[`packages/mcp-evals`](packages/mcp-evals/README.md) for the column schema.
+
+```sh
+# Serve a toolset, then evaluate the agent against the example cases
+TOOLSET=aoi-generator uv run mcp-serve            # in one shell
+MISTRAL_API_KEY=... uv run mcp-evals run \
+  --url http://localhost:8000/mcp \
+  --file packages/mcp-evals/src/mcp_evals/examples/gold.csv --group aoi
+
+# Or pull cases from the shared sheet
+SPREADSHEET_ID=... MISTRAL_API_KEY=... uv run mcp-evals run --url http://localhost:8000/mcp
+```
+
+Evals run on demand in CI via the **Evals** workflow (`workflow_dispatch`);
+they are deliberately not part of PR/push CI (slow, nondeterministic, billed).
+
 ## Development
 
 ```sh

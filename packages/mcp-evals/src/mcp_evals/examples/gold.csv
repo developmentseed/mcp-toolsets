@@ -1,0 +1,5 @@
+test_id,group,query,expected_answer,expected_dataset_ids,expected_tools,forbidden_tools,status,notes
+cds-search-001,cds,Which CDS dataset has hourly ERA5 reanalysis on single levels?,Points to the ERA5 single-levels reanalysis dataset,reanalysis-era5-single-levels,search_datasets;search_eqc,,,
+cds-eqc-001,cds,What quality issues are known for ERA5-Land temperature?,Mentions known biases or QA caveats for ERA5-Land,reanalysis-era5-land,get_dataset_eqc,,,needs richer answer key
+aoi-001,aoi,Give me a bounding box for the Alps.,A GeoJSON-ish bounding box roughly covering the Alps,,aoi_from_place,,,
+smoke-skip-001,smoke,placeholder,,,,,skip,draft - not ready

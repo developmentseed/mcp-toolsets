@@ -1,0 +1,25 @@
+[project]
+name = "mcp-evals"
+version = "0.1.0"
+description = "Evaluation harness that runs the mcp-agent against eval cases (from a Google Sheet or CSV) and scores its tool use and answers."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "httpx<1.0.0,>=0.28.1",
+    "langchain-core<2.0.0,>=1.0.0",
+    "langchain-mistralai<2.0.0,>=1.1.5",
+    "mcp-agent",
+    "pydantic<3.0.0,>=2.12.0",
+    "pydantic-settings<3.0.0,>=2.12.0",
+    "rich<16.0.0,>=15.0.0",
+    "typer<0.27.0,>=0.26.7",
+]
+
+[project.scripts]
+mcp-evals = "mcp_evals.cli:app"
+
+[tool.uv.sources]
+mcp-agent = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
