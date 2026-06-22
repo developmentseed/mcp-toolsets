@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+.env
+
+# Chainlit (generated at runtime by mcp-agent-web)
+.chainlit/
+chainlit.md
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,16 @@
+[project]
+name = "hello"
+version = "0.1.0"
+description = "Minimal example toolset: a single hello tool. Copy it to start a real one."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "langchain-core<2.0.0,>=1.4.6",
+    "mcp-runtime",
+]
+
+[tool.uv.sources]
+mcp-runtime = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
