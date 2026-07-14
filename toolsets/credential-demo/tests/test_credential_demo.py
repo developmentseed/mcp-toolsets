@@ -7,8 +7,9 @@ from credential_demo.tools import DEMO_TOKEN_HEADER, whoami
 def test_account_reported_with_credential():
     with header_context({DEMO_TOKEN_HEADER: "secret"}):
         result = whoami.invoke({})
-    assert result["status"] == "ok"
+    assert "belongs to account user-" in result["message"]
     assert result["account"].startswith("user-")
+    assert result["account"] in result["message"]
 
 
 def test_account_stable_per_user():

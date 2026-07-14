@@ -14,12 +14,13 @@ import importlib
 from ipaddress import IPv4Address
 
 from langchain_core.tools import BaseTool
-from langchain_mcp_adapters.tools import to_fastmcp
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field, IPvAnyAddress
 from pydantic_settings import BaseSettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+from mcp_runtime.fastmcp_output import to_fastmcp
 
 
 class RuntimeSettings(BaseSettings):

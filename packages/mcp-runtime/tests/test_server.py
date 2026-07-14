@@ -12,11 +12,18 @@ from mcp_runtime.server import (
     load_tools,
     toolset_module_name,
 )
+from mcp_runtime.tool_result import ToolResult
 
 
 @tool
-def echo(text: str) -> str:
+def echo(text: str) -> ToolResult:
     """Echo the text back."""
+    return ToolResult(message=text)
+
+
+@tool
+def bare_echo(text: str) -> str:
+    """Echo the text back without following the ToolResult contract."""
     return text
 
 
@@ -102,3 +109,17 @@ async def test_build_server_module_override(monkeypatch):
     server = build_server("anything", module_name=name)
     tools = await server.list_tools()
     assert {tool.name for tool in tools} == {"echo"}
+
+
+async def test_build_server_advertises_output_schema(monkeypatch):
+    tools_module(monkeypatch, "schema_toolset.tools", TOOLS=[echo])
+    server = build_server("schema-toolset")
+    (listed,) = await server.list_tools()
+    assert listed.outputSchema is not None
+    assert "message" in listed.outputSchema["required"]
+
+
+def test_build_server_rejects_non_contract_tool(monkeypatch):
+    tools_module(monkeypatch, "loose_toolset.tools", TOOLS=[bare_echo])
+    with pytest.raises(RuntimeError, match="bare_echo"):
+        build_server("loose-toolset")

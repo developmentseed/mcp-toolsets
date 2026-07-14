@@ -1057,6 +1057,7 @@ dependencies = [
     { name = "langchain-mcp-adapters" },
     { name = "mcp" },
     { name = "pydantic-settings" },
+    { name = "typing-extensions" },
 ]
 
 [package.metadata]
@@ -1066,6 +1067,7 @@ requires-dist = [
     { name = "langchain-mcp-adapters", specifier = ">=0.3.0,<0.4.0" },
     { name = "mcp", specifier = ">=1.27.2,<2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.12.0,<3.0.0" },
+    { name = "typing-extensions", specifier = ">=4.10.0" },
 ]
 
 [[package]]

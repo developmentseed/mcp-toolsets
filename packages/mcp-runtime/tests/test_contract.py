@@ -2,7 +2,8 @@
 
 Doubles as a per-toolset import smoke test and enforces non-empty
 descriptions (docstrings become the MCP schema, so they are part of the
-contract).
+contract) and the ToolResult return contract (annotations become the MCP
+output schema, so every tool in every toolset must convert cleanly).
 """
 
 import importlib
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 from langchain_core.tools import BaseTool
 
+from mcp_runtime.fastmcp_output import to_fastmcp
 from mcp_runtime.server import load_credential_headers
 
 TOOLSETS_DIR = Path(__file__).resolve().parents[3] / "toolsets"
@@ -35,3 +37,7 @@ def test_toolset_contract(toolset):
         assert tool.description and tool.description.strip(), (
             f"{toolset}: tool {tool.name!r} needs a non-empty docstring"
         )
+        # Raises when a tool's return annotation breaks the ToolResult
+        # contract — the same gate build_server applies at startup.
+        converted = to_fastmcp(tool)
+        assert converted.output_schema is not None

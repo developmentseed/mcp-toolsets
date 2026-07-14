@@ -9,19 +9,26 @@ stubbed — a real implementation would pass the token to an upstream API.
 
 import hashlib
 import logging
-from typing import Any
+from typing import NotRequired
 
 from langchain_core.tools import tool
 
 from mcp_runtime.credentials import MissingCredentialError, credential_from_header
+from mcp_runtime.tool_result import ToolResult
 
 logger = logging.getLogger(__name__)
 
 DEMO_TOKEN_HEADER = "x-demo-token"  # noqa: S105 - the header's name, not a secret
 
 
+class WhoamiResult(ToolResult):
+    """The resolved account id, also stated in the message."""
+
+    account: NotRequired[str]
+
+
 @tool
-def whoami() -> dict[str, Any]:
+def whoami() -> WhoamiResult:
     """Report which account the calling user's credential belongs to.
 
     Requires the caller's token in the `x-demo-token` HTTP header of the MCP
@@ -38,8 +45,11 @@ def whoami() -> dict[str, Any]:
         "whoami: %s credential present (%d chars)", DEMO_TOKEN_HEADER, len(token)
     )
     # Stub: derive a stable account id instead of calling an upstream API.
-    account = hashlib.sha256(token.encode()).hexdigest()[:8]
-    return {"account": f"user-{account}", "status": "ok"}
+    account = f"user-{hashlib.sha256(token.encode()).hexdigest()[:8]}"
+    return WhoamiResult(
+        message=f"The caller's credential belongs to account {account}.",
+        account=account,
+    )
 
 
 TOOLS = [whoami]

@@ -57,11 +57,13 @@ cat > "$dir/src/$pkg/tools.py" <<EOF
 
 from langchain_core.tools import tool
 
+from mcp_runtime.tool_result import ToolResult
+
 
 @tool
-def example(query: str) -> str:
+def example(query: str) -> ToolResult:
     """TODO: describe what this tool does (the docstring is the MCP schema)."""
-    return f"you said: {query}"
+    return ToolResult(message=f"you said: {query}")
 
 
 TOOLS = [example]
@@ -72,7 +74,7 @@ from $pkg.tools import example
 
 
 def test_example():
-    assert example.invoke({"query": "hi"}) == "you said: hi"
+    assert example.invoke({"query": "hi"}) == {"message": "you said: hi"}
 EOF
 
 uv add "$name"
