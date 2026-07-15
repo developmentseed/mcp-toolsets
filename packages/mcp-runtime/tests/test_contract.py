@@ -37,7 +37,6 @@ def test_toolset_contract(toolset):
         assert tool.description and tool.description.strip(), (
             f"{toolset}: tool {tool.name!r} needs a non-empty docstring"
         )
-        # Raises when a tool's return annotation breaks the ToolResult
-        # contract — the same gate build_server applies at startup.
+        # The same ToolResult gate build_server applies at startup.
         converted = to_fastmcp(tool)
         assert converted.output_schema is not None

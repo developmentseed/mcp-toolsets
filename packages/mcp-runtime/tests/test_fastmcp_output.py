@@ -80,8 +80,6 @@ async def test_sync_tool_supported():
 
 
 async def test_undeclared_keys_are_dropped_from_structured_content():
-    # The annotation is the complete contract: keys a tool sneaks in without
-    # declaring them do not reach clients as structured content.
     @tool
     async def sneaky(text: str) -> ToolResult:
         """Echo the text."""

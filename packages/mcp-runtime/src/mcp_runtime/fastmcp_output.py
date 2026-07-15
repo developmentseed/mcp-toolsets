@@ -1,26 +1,16 @@
 """Upstream ``to_fastmcp`` plus an output schema from the return annotation.
 
-langchain-mcp-adapters' ``to_fastmcp`` discards the tool's return annotation,
-so FastMCP never advertises an ``outputSchema`` and every result reaches
-clients as a JSON text block only. This wrapper derives the output model from
-the annotation and enforces the :mod:`mcp_runtime.tool_result` contract, so
-results also travel as MCP ``structuredContent``.
+langchain-mcp-adapters' ``to_fastmcp`` discards the return annotation, so
+FastMCP never advertises an ``outputSchema`` and results reach clients as
+JSON text only. This wrapper derives the output model from the annotation —
+a TypedDict/BaseModel, or a union of them, with a required str ``message``
+on at least one arm (the :mod:`mcp_runtime.tool_result` contract) — so
+results also travel as ``structuredContent``. Any other annotation raises at
+conversion, aborting ``build_server``: FastMCP would wrap such values in
+``{"result": ...}`` or the schema would guarantee nothing.
 
-Supported annotations: a TypedDict or pydantic model, or a union of them
-(``SearchDatasetsResult | ToolError``) — the shapes that map 1:1 onto
-``structuredContent``. Anything else (unions with non-dict arms, bare lists,
-primitives, ``dict[str, Any]``, no annotation) is refused: FastMCP would
-either wrap the value in ``{"result": ...}``, changing the payload shape, or
-the schema would guarantee nothing. At least one annotation arm must offer a
-required str ``message``. A refused tool raises at conversion, aborting
-``build_server`` — the contract fails at deploy time, not silently at chat
-time.
-
-Validation happens on every call: FastMCP validates the returned dict against
-the model before emitting ``structuredContent``. Keys not declared in the
-annotation are dropped from the structured payload (pydantic's TypedDict
-semantics), so a tool's annotation is the complete list of keys a client can
-see.
+FastMCP validates every returned dict against the model; undeclared keys are
+dropped, so the annotation is the complete list of keys a client can see.
 """
 
 from types import UnionType
@@ -62,12 +52,10 @@ def _resolve(schema: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shape_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """The advertised schema, object-rooted.
+    """The advertised schema, object-rooted as MCP clients expect.
 
     ``RootModel`` schemas root at a ``$ref`` (single model) or an ``anyOf``
-    (union). Inline the former; stamp ``"type": "object"`` on the latter —
-    every arm is an object, and MCP clients expect an object-rooted
-    ``outputSchema``.
+    (union): inline the former, stamp ``"type": "object"`` on the latter.
     """
     defs = dict(schema.get("$defs", {}))
     if schema.get("$ref", "").startswith("#/$defs/"):
