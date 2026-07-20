@@ -108,17 +108,28 @@ tools and merge.
 2. Write your tools in `toolsets/my-toolset/src/my_toolset/tools.py`:
 
    ```python
+   from typing import Any, NotRequired
+
    from langchain_core.tools import tool
 
+   from mcp_runtime.tool_result import ToolError, ToolResult
+
+   class DoSomethingResult(ToolResult):
+       """Matches for the query, each with an 'id' and a 'score'."""
+
+       matches: NotRequired[list[dict[str, Any]]]
+
    @tool
-   def do_something(query: str, limit: int = 10) -> list[dict]:
+   def do_something(query: str, limit: int = 10) -> DoSomethingResult | ToolError:
        """One-line description — docstrings and type hints ARE the MCP schema."""
        ...
+       return DoSomethingResult(message=f"Found {len(matches)} match(es).", matches=matches)
 
    TOOLS = [do_something]
    ```
 
-   `TOOLS` is the only required export. Non-empty docstrings are enforced by a
+   `TOOLS` is the only required export. Non-empty docstrings and the
+   [ToolResult return contract](#typed-tool-returns) are enforced by a
    contract test. If a tool does I/O (HTTP, database), write it as
    `async def` — `@tool` supports coroutines natively; sync tools are fine
    for pure computation (the runtime runs them in a thread pool). If a tool
@@ -138,6 +149,56 @@ tools and merge.
 
 Conventions: directory `toolsets/<name>` (kebab-case) → module
 `<name_snake_case>.tools` → service `mcp-<name>`.
+
+## Typed tool returns
+
+Every tool returns one dict per call, in one of two shapes from
+`mcp_runtime.tool_result`:
+
+- **`ToolResult`** — success: a required str `message` (the human-readable
+  answer a model or UI reads first) plus any data keys your tool declares.
+- **`ToolError`** — a structured error: a short machine-readable `error`
+  kind and a `detail` saying what happened or what to do next.
+
+The runtime derives each tool's MCP `outputSchema` from its return
+annotation, advertises it in `tools/list`, validates every result against it
+before sending, and delivers results as typed `structuredContent` (alongside
+the usual text block). A tool whose annotation doesn't follow the contract
+**fails at startup** (`build_server` aborts, naming the tool) and fails the
+contract test in CI — never silently at chat time.
+
+How to annotate:
+
+- Minimum: `-> ToolResult | ToolError` for tools whose message is the whole
+  answer (drop the `ToolError` arm if the tool raises instead of returning
+  errors — exceptions become MCP `isError` results, which skip schema
+  validation).
+- Recommended: one `ToolResult` subclass per tool, adding each data key as
+  `NotRequired[...]`, annotated `-> MyResult | ToolError`. Give the subclass
+  a one-line docstring — it becomes the schema's `description`. Nested
+  payloads can be TypedDicts or pydantic models all the way down.
+- Construct returns with TypedDict call syntax —
+  `ToolResult(message=...)`, `ToolError(error="not_found", detail=...)` —
+  mypy-checked, still a plain dict at runtime. `is_error()` (a `TypeIs`
+  guard) narrows helper results typed `dict[str, Any] | ToolError` in both
+  branches.
+
+Rules and gotchas:
+
+- Keys not declared in the annotation are silently dropped from
+  `structuredContent` — the annotation is the complete list of keys a client
+  can see, and mypy flags undeclared keys in return literals.
+- Union arms must all be TypedDicts/pydantic models; bare `str`/`list`
+  returns and `dict[str, Any]` are rejected at startup (FastMCP would wrap
+  the former in `{"result": ...}`, changing your payload shape; the latter
+  guarantees nothing). Put data under a named key instead.
+- The annotation must be on the function `@tool` wraps; the runtime reads it
+  via `tool.coroutine`/`tool.func`.
+
+Verify locally: `TOOLSET=my-toolset uv run mcp-serve`, then `tools/list`
+(via MCP Inspector or `mcp-cli`) shows each tool's `outputSchema`, and
+`tools/call` responses carry `structuredContent`.
+
 
 ## Removing a toolset
 
@@ -361,7 +422,7 @@ call, and the tool reads them at call time:
 from mcp_runtime.credentials import credential_from_header
 
 @tool
-def whoami() -> dict[str, Any]:
+def whoami() -> WhoamiResult:
     """Report which account the calling user's credential belongs to."""
     token = credential_from_header("x-demo-token")
     ...
