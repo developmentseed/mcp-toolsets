@@ -10,6 +10,7 @@ dependencies = [
     "mcp-agent",
     "credential-demo",
     "hello",
+    "stac-explorer",
 ]
 
 [dependency-groups]
@@ -32,6 +33,7 @@ mcp-cli = { workspace = true }
 mcp-agent = { workspace = true }
 credential-demo = { workspace = true }
 hello = { workspace = true }
+stac-explorer = { workspace = true }
 
 [tool.ruff]
 line-length = 88

@@ -14,6 +14,7 @@ members = [
     "mcp-cli",
     "mcp-runtime",
     "mcp-toolsets",
+    "stac-explorer",
 ]
 
 [[package]]
@@ -1080,6 +1081,7 @@ dependencies = [
     { name = "mcp-agent" },
     { name = "mcp-cli" },
     { name = "mcp-runtime" },
+    { name = "stac-explorer" },
 ]
 
 [package.dev-dependencies]
@@ -1097,6 +1099,7 @@ requires-dist = [
     { name = "mcp-agent", editable = "packages/mcp-agent" },
     { name = "mcp-cli", editable = "packages/mcp-cli" },
     { name = "mcp-runtime", editable = "packages/mcp-runtime" },
+    { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
 [package.metadata.requires-dev]
@@ -2476,6 +2479,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f7/2b/58abc2d1fd397e7dde08e947e05c884d8ef2f78d5e2588c17a12d42d6994/sse_starlette-3.4.4.tar.gz", hash = "sha256:07e0fa0460138baf25cdd5fb28683472c3995dc1642225191b3832d62526bcb0", size = 31819, upload-time = "2026-05-12T17:37:17.019Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/67/805710444ea8cc75fbf70b920ed431a560c4bf9c57f7d5a3117213189399/sse_starlette-3.4.4-py3-none-any.whl", hash = "sha256:3f4dd50d8aed2771a091f3a83000323fc3844541c16b4fe585ae2420cc6df973", size = 16514, upload-time = "2026-05-12T17:37:15.601Z" },
+]
+
+[[package]]
+name = "stac-explorer"
+version = "0.1.0"
+source = { editable = "toolsets/stac-explorer" }
+dependencies = [
+    { name = "httpx" },
+    { name = "langchain-core" },
+    { name = "mcp-runtime" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
+    { name = "langchain-core", specifier = ">=1.4.6,<2.0.0" },
+    { name = "mcp-runtime", editable = "packages/mcp-runtime" },
 ]
 
 [[package]]
