@@ -7,7 +7,13 @@ first. This file holds only what an agent cannot derive from it.
 
 - `uv sync` once, then `./scripts/lint`, `./scripts/test`, `./scripts/format`.
 - New toolset: `./scripts/new-toolset <name>` — never hand-roll the layout.
+  Add `--with-ui` for a toolset with a React view (see README "Toolset UI
+  views").
 - Remove a toolset: `./scripts/remove-toolset <name>`.
+- Build toolset UIs: `./scripts/build-views` (needs node). Built view bundles
+  live at `<package>/views/*.html`, are git-ignored, and must exist before
+  `mcp-serve` or `build_server` aborts — the Dockerfile's node stage, the CI
+  `ui` job, and this script rebuild them.
 
 ## Safety
 

@@ -1,11 +1,30 @@
 #!/usr/bin/env sh
-# Scaffold a new toolset: scripts/new-toolset <name> (kebab-case)
+# Scaffold a new toolset: scripts/new-toolset [--with-ui] <name> (kebab-case)
+#
+# --with-ui also lays down a Vite + React `ui/` project with one example view,
+# wired to the example tool via a VIEWS export. See the view contract in
+# README.md ("Toolset UI views").
 
 set -e
 
-name="$1"
+with_ui=0
+name=""
+for arg in "$@"; do
+    case "$arg" in
+        --with-ui) with_ui=1 ;;
+        -*) echo "error: unknown option $arg" >&2; exit 1 ;;
+        *)
+            if [ -n "$name" ]; then
+                echo "error: unexpected argument $arg" >&2
+                exit 1
+            fi
+            name="$arg"
+            ;;
+    esac
+done
+
 if [ -z "$name" ]; then
-    echo "usage: scripts/new-toolset <name>" >&2
+    echo "usage: scripts/new-toolset [--with-ui] <name>" >&2
     exit 1
 fi
 case "$name" in
@@ -24,7 +43,9 @@ fi
 
 mkdir -p "$dir/src/$pkg" "$dir/tests"
 
-cat > "$dir/pyproject.toml" <<EOF
+# pyproject — with UI, ship the built (git-ignored) view bundles in the wheel.
+{
+    cat <<EOF
 [project]
 name = "$name"
 version = "0.1.0"
@@ -42,6 +63,16 @@ mcp-runtime = { workspace = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 EOF
+    if [ "$with_ui" = 1 ]; then
+        cat <<EOF
+
+[tool.hatch.build.targets.wheel]
+# Views are built by ui/ (vite) into the package's views/ dir; they are
+# git-ignored build artifacts, so force them into the wheel.
+artifacts = ["src/$pkg/views/*.html"]
+EOF
+    fi
+} > "$dir/pyproject.toml"
 
 cat > "$dir/toolset.yaml" <<EOF
 # Optional Helm values overrides for this toolset (see charts/mcp-toolset/values.yaml).
@@ -52,7 +83,47 @@ cat > "$dir/src/$pkg/__init__.py" <<EOF
 """$name toolset."""
 EOF
 
-cat > "$dir/src/$pkg/tools.py" <<EOF
+if [ "$with_ui" = 1 ]; then
+    cat > "$dir/src/$pkg/tools.py" <<EOF
+"""LangChain tools for $name."""
+
+from typing import NotRequired
+
+from langchain_core.tools import tool
+
+from mcp_runtime.tool_result import ToolResult
+
+
+class ExampleResult(ToolResult):
+    """A greeting plus who it was for — the data the panel view renders."""
+
+    name: NotRequired[str]
+
+
+@tool
+def example(name: str = "world") -> ExampleResult:
+    """TODO: describe what this tool does (the docstring is the MCP schema)."""
+    return ExampleResult(message=f"Hello, {name}!", name=name)
+
+
+TOOLS = [example]
+
+# Map a tool to a UI view. The view is built from ui/ into
+# src/$pkg/views/<view-id>.html and rendered by a UI-capable MCP host,
+# fed this tool's structuredContent. Views are progressive enhancement:
+# the message + data above still stand alone in a plain client.
+VIEWS = {"example": "panel"}
+EOF
+
+    cat > "$dir/tests/test_$pkg.py" <<EOF
+from $pkg.tools import example
+
+
+def test_example():
+    assert example.invoke({"name": "dev"}) == {"message": "Hello, dev!", "name": "dev"}
+EOF
+else
+    cat > "$dir/src/$pkg/tools.py" <<EOF
 """LangChain tools for $name."""
 
 from langchain_core.tools import tool
@@ -69,17 +140,221 @@ def example(query: str) -> ToolResult:
 TOOLS = [example]
 EOF
 
-cat > "$dir/tests/test_$pkg.py" <<EOF
+    cat > "$dir/tests/test_$pkg.py" <<EOF
 from $pkg.tools import example
 
 
 def test_example():
     assert example.invoke({"query": "hi"}) == {"message": "you said: hi"}
 EOF
+fi
+
+if [ "$with_ui" = 1 ]; then
+    mkdir -p "$dir/ui/src"
+
+    # package.json — $name expands; \${VIEW:-panel} stays literal for the shell.
+    cat > "$dir/ui/package.json" <<EOF
+{
+  "name": "$name-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && VIEW=panel vite build",
+    "dev": "VIEW=\${VIEW:-panel} vite"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vite-plugin-singlefile": "^2.1.0"
+  }
+}
+EOF
+
+    cat > "$dir/ui/tsconfig.json" <<'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src", "vite.config.ts"]
+}
+EOF
+
+    # vite.config — $pkg expands; \${view} and backticks stay literal.
+    cat > "$dir/ui/vite.config.ts" <<EOF
+import { resolve } from "node:path";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { viteSingleFile } from "vite-plugin-singlefile";
+
+// Build one self-contained view per pass (VIEW=<id>), inlined into a single
+// HTML file in the Python package's views/ dir, where the runtime serves it as
+// ui://<toolset>/<id>. Add a view: a new <id>.html + src/<id>.tsx, a VIEWS
+// entry in tools.py, and a build pass in package.json's "build" script.
+const view = process.env.VIEW;
+if (!view) {
+  throw new Error("set VIEW=<view-id> (e.g. VIEW=panel vite build)");
+}
+
+export default defineConfig({
+  plugins: [react(), viteSingleFile()],
+  build: {
+    outDir: resolve(__dirname, "../src/$pkg/views"),
+    emptyOutDir: false,
+    rollupOptions: {
+      input: { [view]: resolve(__dirname, \`\${view}.html\`) },
+    },
+  },
+});
+EOF
+
+    cat > "$dir/ui/panel.html" <<'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>panel</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/panel.tsx"></script>
+  </body>
+</html>
+EOF
+
+    cat > "$dir/ui/src/host.ts" <<'EOF'
+// The host bridge — the one seam a view shares no matter its framework. A view
+// runs in a sandboxed iframe and talks to its host (Claude web, an mcp-ui
+// client, or the bundled Chainlit agent) over postMessage:
+//
+//   iframe -> host  { type: "mcp:ready" }             when ready for data
+//   host   -> iframe { type: "mcp:data", payload }    the tool's structuredContent
+//   iframe -> host  { type: "mcp:sendMessage", text } to advance the chat
+//
+// A view never reaches for credentials or the network beyond what the tool put
+// in `payload` (e.g. a pre-signed URL).
+
+type DataHandler<T> = (payload: T) => void;
+
+/** Register for the tool's structuredContent, and announce readiness. */
+export function onData<T>(handler: DataHandler<T>): void {
+  window.addEventListener("message", (event: MessageEvent) => {
+    const message = event.data;
+    if (message && message.type === "mcp:data") {
+      handler(message.payload as T);
+    }
+  });
+  window.parent.postMessage({ type: "mcp:ready" }, "*");
+}
+
+/** Send text back into the conversation, so the model calls the next tool. */
+export function sendMessage(text: string): void {
+  window.parent.postMessage({ type: "mcp:sendMessage", text }, "*");
+}
+EOF
+
+    cat > "$dir/ui/src/panel.tsx" <<'EOF'
+import { StrictMode, useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+
+import { onData, sendMessage } from "./host";
+import "./styles.css";
+
+// Mirror the tool's ToolResult (ExampleResult in tools.py). The host injects
+// the whole structuredContent as this view's payload.
+interface ExampleResult {
+  message: string;
+  name?: string;
+}
+
+function App() {
+  const [data, setData] = useState<ExampleResult | null>(null);
+  useEffect(() => {
+    onData<ExampleResult>(setData);
+  }, []);
+
+  if (!data) return <div className="panel">Loading…</div>;
+  return (
+    <div className="panel">
+      <p>{data.message}</p>
+      {/* Interactions advance the chat: this becomes a user message, which the
+          model reads and can act on with another tool. */}
+      <button onClick={() => sendMessage(`Greet ${data.name ?? "everyone"} again`)}>
+        Again
+      </button>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+EOF
+
+    cat > "$dir/ui/src/styles.css" <<'EOF'
+:root {
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, sans-serif;
+}
+.panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 12px;
+}
+.panel button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.panel button:hover {
+  filter: brightness(1.08);
+}
+EOF
+fi
 
 uv add "$name"
 
 echo
 echo "Scaffolded $dir and registered it in the workspace."
+if [ "$with_ui" = 1 ]; then
+    echo "Build the view before serving (needs node):"
+    echo "  cd $dir/ui && npm install && npm run build"
+    echo "Then: TOOLSET=$name uv run mcp-serve"
+fi
 echo "Next: edit $dir/src/$pkg/tools.py, then ./scripts/test"
 echo "Merge to main and CI deploys it as mcp-$name."

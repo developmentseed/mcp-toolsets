@@ -1,0 +1,111 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #667085;
+  --card: #f7f8fa;
+  --border: #e4e7ec;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --fg: #f2f4f7;
+    --muted: #98a2b3;
+    --card: #1e2128;
+    --border: #2b2f38;
+    --accent: #3b82f6;
+    --accent-fg: #ffffff;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+.card .thumb {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  width: 100%;
+  background: var(--border);
+}
+.card .thumb-placeholder {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--border);
+  font-size: 12px;
+}
+.card .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.card h3 { margin: 0; font-size: 14px; }
+.card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card .id { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+button.select {
+  margin-top: auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  cursor: pointer;
+}
+button.select:hover { filter: brightness(1.08); }
+
+.empty { padding: 24px; color: var(--muted); text-align: center; }
+
+#map { position: absolute; inset: 0; }
+.map-caption {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 500;
+  max-width: 70%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.map-caption .preview {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.map-caption .note { color: var(--muted); font-size: 11px; margin-top: 2px; }
+html, body, #root { height: 100%; }

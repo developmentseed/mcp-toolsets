@@ -200,6 +200,63 @@ Verify locally: `TOOLSET=my-toolset uv run mcp-serve`, then `tools/list`
 `tools/call` responses carry `structuredContent`.
 
 
+## Toolset UI views
+
+A tool can ship a **view**: a small frontend component (a map, a gallery, a
+chart) that a UI-capable MCP host — Claude web, an mcp-ui client, or the bundled
+Chainlit agent — renders in a sandboxed iframe and feeds the tool's
+`structuredContent`. The runtime stays pure-Python: a view is a build-time HTML
+bundle served as an MCP resource; nothing new executes at call time. Views are
+**progressive enhancement** — the tool's `message` and structured data still
+stand alone in a plain client, so a view never changes what a tool returns.
+
+Scaffold a toolset with an example view, then build it (needs node):
+
+```sh
+./scripts/new-toolset --with-ui my-toolset
+cd toolsets/my-toolset/ui && npm install && npm run build
+```
+
+### The contract
+
+A toolset opts in with three things, validated at startup — a missing bundle,
+or a view naming an unknown tool, aborts `build_server`:
+
+1. **`VIEWS`** — a `{tool_name: view_id}` export in the tools module.
+2. **A built bundle** at `<package>/views/<view_id>.html`, self-contained (all
+   JS/CSS inlined). The shipped `ui/` builds these with Vite +
+   `vite-plugin-singlefile`, one pass per view (`VIEW=<id> vite build`), writing
+   into the package's `views/` dir. Built bundles are git-ignored; the
+   Dockerfile's node stage and `./scripts/build-views` rebuild them.
+3. **The host bridge** — the bundle speaks a three-message postMessage protocol
+   (`ui/src/host.ts`): `mcp:ready` up when it mounts, `mcp:data` down carrying
+   the tool's `structuredContent`, `mcp:sendMessage` up to advance the chat. Any
+   framework works; only this seam is fixed.
+
+Given that, the runtime does two standard-MCP things: it serves each view as a
+resource `ui://<toolset>/<view_id>` and stamps the owning tool's `_meta` with
+that URI (the mcp-ui / Apps-SDK `_meta` convention). A UI-capable host reads the
+`_meta` to know a tool has a view and reads the resource for its HTML — that is
+all the Chainlit agent does (`get_resources` + the tool's `_meta`), and it is
+what Claude web / mcp-ui clients consume too.
+
+### Credentials never reach the iframe
+
+A view can do exactly as much as what the tool put in its `ToolResult`: pass
+**pre-signed or short-lived URLs** (tiles, thumbnails), never tokens. The
+[per-user credential](#per-user-credentials) invariant is unchanged — secrets
+ride the MCP transport as headers, never the conversation or the iframe. For an
+authenticated data source, the tool mints a signed URL server-side and returns
+it in the result.
+
+### Interactions advance the chat
+
+A view is an input device, not just a picture: an interaction calls
+`sendMessage(...)`, which arrives back as a user message, so the model reads it
+and calls the next tool. `toolsets/stac-explorer` is a worked example — a
+collection gallery whose "Show on map" button drives a second tool that renders
+the selected data on a map.
+
 ## Removing a toolset
 
 ```sh
