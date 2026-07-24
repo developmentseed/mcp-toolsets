@@ -308,6 +308,29 @@ uv run mcp-cli list
 
 Build an image locally with `docker build --build-arg TOOLSET=hello .`.
 
+- **Optional secret**: `MCP_CHAT_HOST` — a hostname for the hosted chat UI (see
+  [Hosted chat](#hosted-chat-bring-your-own-model)). When `MCP_INGRESS_HOST` is
+  set, the deploy builds `Dockerfile.chat` and installs `charts/mcp-chat` on
+  this host (default `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and
+  a TLS cert (`<namespace>-chat-tls`, issued by cert-manager if configured).
+
+## Hosted chat (bring your own model)
+
+`packages/mcp-agent`'s Chainlit UI can also run as a public web app over the
+deployed toolsets, at `chat.<shared-domain>`. It is **bring-your-own-model**:
+the deployment holds no provider key. Each user opens ⚙ settings and enters a
+`provider:model` and their own API key (and any per-toolset credential headers);
+the key lives only in that browser session — never sent to the model, logged, or
+stored server-side — so exposing the host exposes no server-held secret and the
+model spend is the user's own. The image (`Dockerfile.chat`) bundles a set of
+providers (`anthropic`, `openai`, `google-genai`, `mistralai`) so any of them
+works without a rebuild; the workspace itself stays provider-agnostic.
+
+It deploys automatically alongside the index when `MCP_INGRESS_HOST` is set (a
+shared-code change or a `workflow_dispatch` run). There is no built-in auth —
+BYOM removes the shared-key abuse risk, but put an auth proxy in front (or
+enable Chainlit auth) if you need to restrict who can use it.
+
 ## Kubernetes cluster setup
 
 The deploy workflow assumes an existing cluster. Minimum requirements: a
@@ -458,10 +481,11 @@ uv run mcp-agent                                # url + model from .env
 Any `init_chat_model` provider works (`openai:`, `anthropic:`, `mistralai:`,
 …) — switching is a `PROVIDER_MODEL` change plus that provider's package. The
 same agent is available as a Chainlit chat UI: `uv run mcp-agent-web` serves it
-at
-`http://localhost:8080`, configured entirely from the environment/.env —
-`MCP_URL` (which index or server to chat with), `PROVIDER_MODEL`,
-`PROVIDER_API_KEY` and `CHAINLIT_PORT`.
+at `http://localhost:8080`. It is **bring-your-own-model** — set the model and
+API key in ⚙ settings, or pre-fill them from the environment/.env
+(`PROVIDER_MODEL`, `PROVIDER_API_KEY`); `MCP_URL` (which index or server to chat
+with) and `CHAINLIT_PORT` also come from there. See
+[Hosted chat](#hosted-chat-bring-your-own-model) to run it as a public web app.
 
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
