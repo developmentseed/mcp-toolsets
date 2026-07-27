@@ -2,10 +2,12 @@
 
 A view is a build-time, self-contained HTML bundle (e.g. a React app built by
 Vite with everything inlined) that a UI-capable MCP host renders in a sandboxed
-iframe, fed the tool's ``structuredContent``. It is standard MCP: the runtime
-serves each view as a **resource** ``ui://<toolset>/<view_id>`` and stamps the
-owning tool's ``_meta`` with that URI — exactly what Claude web / mcp-ui clients
-read. Nothing here executes at call time, so the runtime stays pure-Python.
+iframe, fed the tool's ``structuredContent``. It follows the **MCP Apps** spec
+(``modelcontextprotocol/ext-apps``): the runtime serves each view as a
+**resource** ``ui://<toolset>/<view_id>`` (MIME ``text/html;profile=mcp-app``)
+and stamps the owning tool's ``_meta`` with that URI — exactly what MCP Apps
+hosts (Claude, ChatGPT, Goose, VS Code) read. Nothing here executes at call
+time, so the runtime stays pure-Python.
 
 A toolset opts in with two things, both validated at ``build_server`` time (a
 view naming an unknown tool, or a missing bundle, aborts startup):
@@ -26,9 +28,12 @@ from mcp.server.fastmcp.resources import FunctionResource
 from mcp.server.fastmcp.tools import Tool as FastMCPTool
 from pydantic import AnyUrl
 
-# The ``_meta`` a UI-capable host reads: ``{"ui": {"resourceUri": "ui://..."}}``,
-# following the emerging mcp-ui / Apps-SDK convention.
+# The ``_meta`` an MCP Apps host reads: ``{"ui": {"resourceUri": "ui://..."}}``.
 VIEW_META_KEY = "ui"
+
+# The MCP Apps resource MIME. Plain ``text/html`` is rejected by spec hosts;
+# ``;profile=mcp-app`` marks it as an interactive app bundle, not a document.
+VIEW_MIME_TYPE = "text/html;profile=mcp-app"
 
 
 def view_resource_uri(toolset: str, view_id: str) -> str:
@@ -104,7 +109,7 @@ def register_views(
             FunctionResource(
                 uri=AnyUrl(view_resource_uri(toolset, view_id)),
                 name=f"{toolset}-{view_id}",
-                mime_type="text/html",
+                mime_type=VIEW_MIME_TYPE,
                 fn=lambda html=html: html,
             )
         )

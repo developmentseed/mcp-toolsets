@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from mcp_runtime.server import (
     RuntimeSettings,
     build_server,
+    credential_instructions,
     load_credential_headers,
     load_tools,
     toolset_module_name,
@@ -93,6 +94,30 @@ def test_load_credential_headers_rejects_bad_export(monkeypatch):
     bad = tools_module(monkeypatch, "bad_tools", CREDENTIAL_HEADERS="x-fake")
     with pytest.raises(RuntimeError, match="CREDENTIAL_HEADERS"):
         load_credential_headers(bad)
+
+
+def test_credential_instructions():
+    assert credential_instructions([]) is None
+    text = credential_instructions(["x-cds-token"])
+    assert text is not None
+    # Names the header and steers the model away from asking for it.
+    assert "``x-cds-token``" in text
+    assert "do not ask the user" in text
+
+
+async def test_build_server_sets_credential_instructions(monkeypatch):
+    tools_module(
+        monkeypatch, "creds_toolset.tools", TOOLS=[echo], CREDENTIAL_HEADERS=["X-Key"]
+    )
+    server = build_server("creds-toolset")
+    assert server.instructions is not None
+    assert "``x-key``" in server.instructions
+
+
+async def test_build_server_no_instructions_without_credentials(monkeypatch):
+    tools_module(monkeypatch, "plain_toolset.tools", TOOLS=[echo])
+    server = build_server("plain-toolset")
+    assert server.instructions is None
 
 
 async def test_build_server_derives_module_from_toolset_name(monkeypatch):
