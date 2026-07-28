@@ -71,6 +71,30 @@ def load_credential_headers(module_name: str) -> list[str]:
     return sorted(header.lower() for header in headers)
 
 
+def credential_instructions(credential_headers: list[str]) -> str | None:
+    """Server ``instructions`` telling the model how this server's auth works.
+
+    Credentials ride the transport as HTTP headers (see
+    ``mcp_runtime.credentials``) and are never visible to the model. Without a
+    hint, a model tends to preemptively refuse a credential-bearing tool or ask
+    the user for a key it will never see. Deriving this once from the toolset's
+    declared ``CREDENTIAL_HEADERS`` keeps the guidance in a single place —
+    server-level, returned in the ``initialize`` result so every host gets it —
+    instead of repeating it in each tool's docstring. Returns ``None`` when the
+    toolset declares no credential headers (no instructions to add).
+    """
+    if not credential_headers:
+        return None
+    names = ", ".join(f"``{header}``" for header in credential_headers)
+    return (
+        f"Some tools here authenticate the caller via HTTP headers ({names}) "
+        "supplied by the client transport, not by you. You never see these "
+        "credentials and cannot set them, so do not ask the user for them and do "
+        "not refuse to call a tool for lack of a key — just call the tool. If a "
+        "credential is genuinely missing, the tool reports that itself."
+    )
+
+
 def build_server(
     toolset: str,
     module_name: str | None = None,
@@ -89,6 +113,7 @@ def build_server(
 
     server = FastMCP(
         name=f"mcp-{toolset}",
+        instructions=credential_instructions(credential_headers),
         tools=fastmcp_tools,
         host=host,
         port=port,

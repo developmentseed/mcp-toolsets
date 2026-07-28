@@ -96,5 +96,7 @@ async def test_build_server_registers_view_resource(monkeypatch, tmp_path):
 
     resources = await server.list_resources()
     assert str(resources[0].uri) == "ui://srv/panel"
+    # The MCP Apps profile MIME — a plain text/html is rejected by spec hosts.
+    assert resources[0].mimeType == "text/html;profile=mcp-app"
     contents = list(await server.read_resource("ui://srv/panel"))
     assert contents[0].content == "<h1>panel</h1>"

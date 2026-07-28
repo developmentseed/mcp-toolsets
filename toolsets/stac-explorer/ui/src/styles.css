@@ -108,4 +108,6 @@ button.select:hover { filter: brightness(1.08); }
   flex: none;
 }
 .map-caption .note { color: var(--muted); font-size: 11px; margin-top: 2px; }
-html, body, #root { height: 100%; }
+/* The map fills the iframe. MCP Apps hosts auto-size the frame to content, so a
+   pure height:100% map collapses to zero height; a min-height floors it. */
+html, body, #root { height: 100%; min-height: 420px; }
