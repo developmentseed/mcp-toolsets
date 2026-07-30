@@ -65,14 +65,12 @@ smallest thing that deploys) and `credential-demo` (the
 
 ## The runtime dependency
 
-Everything that isn't a toolset comes from one PyPI package, pinned in the root
-`pyproject.toml`:
+[![PyPI](https://img.shields.io/pypi/v/mcp-toolsets-runtime?label=mcp-toolsets-runtime)](https://pypi.org/project/mcp-toolsets-runtime/)
 
-```toml
-dependencies = ["mcp-toolsets-runtime[agent]<0.2.0,>=0.1.4", ...]
-```
-
-It provides four importable modules and their console scripts:
+Everything that isn't a toolset comes from one PyPI package,
+[`mcp-toolsets-runtime`](https://github.com/developmentseed/mcp-toolsets-runtime),
+bounded in the root `pyproject.toml` and pinned exactly by `uv.lock`. It
+provides four importable modules and their console scripts:
 
 | Module | Role |
 | --- | --- |
@@ -81,10 +79,10 @@ It provides four importable modules and their console scripts:
 | `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
 | `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. Needs the `[agent]` extra — drop it from the pin if you don't want a chat host. |
 
-Upgrading is a one-line change plus `uv lock`; because `uv.lock` is a shared
-build input, merging the bump rebuilds and redeploys every toolset. Fix runtime
-behaviour upstream and release it — never patch it here, since nothing local
-would survive the next `uv sync`.
+Upgrade with `uv lock --upgrade-package mcp-toolsets-runtime`; because `uv.lock`
+is a shared build input, merging the bump rebuilds and redeploys every toolset.
+Fix runtime behaviour upstream and release it — never patch it here, since
+nothing local would survive the next `uv sync`.
 
 This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
 service — `charts/*`, the `Dockerfile`, the workflows, and
