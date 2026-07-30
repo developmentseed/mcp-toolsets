@@ -1030,7 +1030,7 @@ index = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.4,<0.2.0" },
+    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.5,<0.2.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -1046,7 +1046,7 @@ index = [{ name = "mcp-toolsets-runtime" }]
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.1.4"
+version = "0.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1058,9 +1058,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/42/4bfb90602be783c1a5a1e91e3771f6d80a8ce94415562fce1ac38e7045f0/mcp_toolsets_runtime-0.1.4.tar.gz", hash = "sha256:98d56dc781a82ac280f27ba3bdb9567c1b5d9272ad4c6f46b2bfd9b5825661d3", size = 193863, upload-time = "2026-07-30T09:30:34.11Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/67/cdb3836b04a2d9e829545af4490a12f15d88f6da446a9f248de4f0847ada/mcp_toolsets_runtime-0.1.5.tar.gz", hash = "sha256:b8b368294ddc32a2547556a799e3464718a4b9b2e5ae1ba2d6e1390f01d65482", size = 197436, upload-time = "2026-07-30T13:53:48.905Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/97/796ebaa02b2fd0cd6d00558879f4a1b7741be31ae1df6658509bc8066647/mcp_toolsets_runtime-0.1.4-py3-none-any.whl", hash = "sha256:4c2274d3ac80c5fefc3f2e883f739b7120da34ad48ecc6f282d903c947b535dd", size = 35375, upload-time = "2026-07-30T09:30:32.753Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/62/6f59b6dfce208beab35935988b509b00d97b7b7bd8b9301e4aee45d561d4/mcp_toolsets_runtime-0.1.5-py3-none-any.whl", hash = "sha256:942a765cc767cfacc92a8c902ac2473ddd3df87953e7a8941ae9d0279a939f23", size = 36887, upload-time = "2026-07-30T13:53:47.473Z" },
 ]
 
 [package.optional-dependencies]
