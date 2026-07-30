@@ -157,7 +157,9 @@ jobs:
         with:
           context: .
           push: true
-          build-args: TOOLSET=mcp-runtime
+          # The sentinel the Dockerfile branches on: install the runtime alone
+          # (the `index` dependency group) — no toolsets, no UI build.
+          build-args: TOOLSET=index
           tags: ${{ steps.image.outputs.repository }}:${{ github.sha }}
           cache-from: type=gha,scope=mcp-index
           cache-to: type=gha,scope=mcp-index,mode=max

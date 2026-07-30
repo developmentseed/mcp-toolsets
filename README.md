@@ -6,6 +6,13 @@ A template monorepo of **toolsets** — small packages of
 implementors write a single Python module; a shared runtime, one parameterized
 Dockerfile and one generic Helm chart handle everything else.
 
+The runtime is not in this repo. It is
+[**mcp-toolsets-runtime**](https://github.com/developmentseed/mcp-toolsets-runtime),
+installed from PyPI like any other dependency — which makes this repo the
+worked example of consuming it: what a toolset exports, how views are built and
+served, and how the whole thing deploys. See
+[The runtime dependency](#the-runtime-dependency).
+
 ```
 toolsets/<name>/tools.py  ──▶  ghcr.io/<owner>/<repo>/mcp-<name>  ──▶  k8s Service mcp-<name>
    (LangChain @tool fns)        (Dockerfile --build-arg TOOLSET=...)     (charts/mcp-toolset)
@@ -44,7 +51,7 @@ the only thing to set is the Kubernetes namespace:
    (`gh variable set MCP_NAMESPACE --body <namespace>`); the `__MCP_NAMESPACE__`
    placeholders then stay literal until you re-run bootstrap or edit them by hand.
 
-2. **Develop** — `uv sync`, then add a toolset (`./scripts/new-toolset`) or play
+2. **Develop** — `uv sync`, then add a toolset (`uv run mcp-toolset new`) or play
    with the shipped `hello` example (see [Quickstart](#quickstart)).
 
 3. **Deploy when ready** — set the `KUBE_CONFIG` secret (see
@@ -56,21 +63,35 @@ The repo ships two example toolsets you can keep, copy or delete: `hello` (the
 smallest thing that deploys) and `credential-demo` (the
 [per-user credentials](#per-user-credentials) pattern).
 
-## Packages
+## The runtime dependency
 
-| Package | Role |
+[![PyPI](https://img.shields.io/pypi/v/mcp-toolsets-runtime?label=mcp-toolsets-runtime)](https://pypi.org/project/mcp-toolsets-runtime/)
+
+Everything that isn't a toolset comes from one PyPI package,
+[`mcp-toolsets-runtime`](https://github.com/developmentseed/mcp-toolsets-runtime),
+bounded in the root `pyproject.toml` and pinned exactly by `uv.lock`. It
+provides four importable modules and their console scripts:
+
+| Module | Role |
 | --- | --- |
-| **`packages/mcp-runtime`** | **Required.** Discovers a toolset's `TOOLS` and serves them as a stateless streamable-HTTP MCP server (`mcp-serve`), with a `/health` route for k8s probes. Also builds the `mcp-index`. |
-| **`packages/mcp-cli`** | **Recommended for development.** Typer/rich client (`mcp-cli`) to list and call tools on a running service — the day-to-day inner loop. |
-| **`packages/mcp-agent`** | **Optional example.** A chat agent (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools with a configurable chat model. Delete it if you don't need an agent. |
+| `mcp_runtime` | **Required.** Discovers a toolset's `TOOLS` and serves them as a stateless streamable-HTTP MCP server (`mcp-serve`), with a `/health` route for k8s probes; serves `VIEWS` as `ui://` resources. Also runs the directory service (`mcp-index`). |
+| `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
+| `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
+| `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. Needs the `[agent]` extra — drop it from the pin if you don't want a chat host. |
 
-Plus `toolsets/*` — one directory per toolset, each becoming an MCP service —
-and `charts/mcp-toolset`, the generic Helm chart all toolsets deploy through.
+Upgrade with `uv lock --upgrade-package mcp-toolsets-runtime`; because `uv.lock`
+is a shared build input, merging the bump rebuilds and redeploys every toolset.
+Fix runtime behaviour upstream and release it — never patch it here, since
+nothing local would survive the next `uv sync`.
+
+This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
+service — `charts/*`, the `Dockerfile`, the workflows, and
+`tests/test_contract.py`.
 
 ## Quickstart
 
 ```sh
-uv sync                # installs every workspace member into one .venv
+uv sync                # runtime from PyPI + every toolset, into one .venv
 ./scripts/test         # run all tests
 ./scripts/lint         # ruff + mypy (./scripts/format to autofix)
 
@@ -99,10 +120,11 @@ agent repo.
 No Docker, Kubernetes or MCP knowledge needed — write ordinary LangChain
 tools and merge.
 
-1. Scaffold (registers the package in the uv workspace too):
+1. Scaffold with the runtime's generator (registers the package in the uv
+   workspace too):
 
    ```sh
-   ./scripts/new-toolset my-toolset
+   uv run mcp-toolset new my-toolset
    ```
 
 2. Write your tools in `toolsets/my-toolset/src/my_toolset/tools.py`:
@@ -203,9 +225,8 @@ Verify locally: `TOOLSET=my-toolset uv run mcp-serve`, then `tools/list`
 ## Toolset UI views
 
 A tool can ship a **view**: a small frontend component (a map, a gallery, a
-chart) that a UI-capable MCP host — Claude web, an mcp-ui client, or the bundled
-Chainlit agent — renders in a sandboxed iframe and feeds the tool's
-`structuredContent`. The runtime stays pure-Python: a view is a build-time HTML
+chart) that an MCP Apps host — Claude, ChatGPT, or the bundled Chainlit agent —
+renders in a sandboxed iframe and feeds the tool's `structuredContent`. The runtime stays pure-Python: a view is a build-time HTML
 bundle served as an MCP resource; nothing new executes at call time. Views are
 **progressive enhancement** — the tool's `message` and structured data still
 stand alone in a plain client, so a view never changes what a tool returns.
@@ -213,7 +234,7 @@ stand alone in a plain client, so a view never changes what a tool returns.
 Scaffold a toolset with an example view, then build it (needs node):
 
 ```sh
-./scripts/new-toolset --with-ui my-toolset
+uv run mcp-toolset new --with-ui my-toolset
 cd toolsets/my-toolset/ui && npm install && npm run build
 ```
 
@@ -228,17 +249,29 @@ or a view naming an unknown tool, aborts `build_server`:
    `vite-plugin-singlefile`, one pass per view (`VIEW=<id> vite build`), writing
    into the package's `views/` dir. Built bundles are git-ignored; the
    Dockerfile's node stage and `./scripts/build-views` rebuild them.
-3. **The host bridge** — the bundle speaks a three-message postMessage protocol
-   (`ui/src/host.ts`): `mcp:ready` up when it mounts, `mcp:data` down carrying
-   the tool's `structuredContent`, `mcp:sendMessage` up to advance the chat. Any
-   framework works; only this seam is fixed.
+3. **The host bridge** — [`@developmentseed/mcp-view`][mcp-view], the npm half of
+   the runtime. It wraps the MCP Apps `ui/*` postMessage protocol in two
+   functions, so a view never hand-rolls the wire format:
+
+   ```ts
+   import { onData, sendMessage } from "@developmentseed/mcp-view";
+
+   onData<MyResult>((data) => render(data));  // the tool's structuredContent
+   button.onclick = () => sendMessage("…");   // a user turn back into the chat
+   ```
+
+   Any framework works; only this seam is fixed. Add it to your `ui/`
+   dependencies — it's a public package, so no registry auth here or in CI.
 
 Given that, the runtime does two standard-MCP things: it serves each view as a
 resource `ui://<toolset>/<view_id>` and stamps the owning tool's `_meta` with
-that URI (the mcp-ui / Apps-SDK `_meta` convention). A UI-capable host reads the
-`_meta` to know a tool has a view and reads the resource for its HTML — that is
-all the Chainlit agent does (`get_resources` + the tool's `_meta`), and it is
-what Claude web / mcp-ui clients consume too.
+that URI. Because that follows the [MCP Apps][ext-apps] standard, any MCP Apps
+host renders the same bundle unchanged — Claude, ChatGPT, Goose, VS Code — and
+so does the bundled Chainlit agent, whose `McpView.jsx` element implements the
+host end of the identical protocol.
+
+[mcp-view]: https://www.npmjs.com/package/@developmentseed/mcp-view
+[ext-apps]: https://github.com/modelcontextprotocol/ext-apps
 
 ### Credentials never reach the iframe
 
@@ -256,6 +289,21 @@ A view is an input device, not just a picture: an interaction calls
 and calls the next tool. `toolsets/stac-explorer` is a worked example — a
 collection gallery whose "Show on map" button drives a second tool that renders
 the selected data on a map.
+
+### Viewing them in the bundled Chainlit agent
+
+External MCP Apps hosts need nothing from you beyond the contract above.
+Chainlit isn't one out of the box, so the runtime ships the host-side element
+that makes it one, and you install it into the app root once (it lands in the
+git-ignored `public/elements/`):
+
+```sh
+uv run mcp-agent install-elements    # writes public/elements/McpView.jsx
+```
+
+Re-run it after a runtime upgrade to pick up the new element. Nothing is written
+at runtime, so this works on a read-only filesystem; `mcp-agent-web` starts
+without it but warns and won't render views.
 
 ## Removing a toolset
 
@@ -278,9 +326,10 @@ images in GHCR (delete the package from the repo settings if you care).
 - **ci.yml** (PRs + main): lint, tests, `helm lint`, and a no-push Docker
   build of every image affected by the change. Always runs — no cluster needed.
 - **deploy.yml** (main): detects changed toolsets (`scripts/changed-toolsets`)
-  — changes to shared code (`packages/`, `charts/`, `Dockerfile`, `uv.lock`,
-  root `pyproject.toml`) rebuild *all* toolsets — then per toolset: build and
-  push `ghcr.io/<owner>/<repo>/mcp-<name>:<sha>` and
+  — changes to shared build inputs (`charts/`, `Dockerfile`, `uv.lock`, root
+  `pyproject.toml`) rebuild *all* toolsets, which is how a runtime version bump
+  reaches every service — then per toolset: build and push
+  `ghcr.io/<owner>/<repo>/mcp-<name>:<sha>` and
   `helm upgrade --install mcp-<name> charts/mcp-toolset -n __MCP_NAMESPACE__`.
   A reconcile job also uninstalls releases whose `toolsets/<name>` directory
   is gone — see [Removing a toolset](#removing-a-toolset).
@@ -295,8 +344,9 @@ images in GHCR (delete the package from the repo settings if you care).
   so two repos sharing a cluster don't collide.
 - **Optional secret**: `MCP_INGRESS_HOST` — a shared hostname. When set, every
   toolset also gets an Ingress on that host at `/<name>`, and an `mcp-index`
-  service (built from `packages/mcp-runtime`, deployed via `charts/mcp-index`)
-  serves a directory of all toolsets at the domain root — see
+  service (the same `Dockerfile` built with `TOOLSET=index`, which installs the
+  runtime alone; deployed via `charts/mcp-index`) serves a directory of all
+  toolsets at the domain root — see
   [Kubernetes cluster setup](#kubernetes-cluster-setup). When unset, services
   stay ClusterIP-only and the only access is `kubectl port-forward` via
   cluster RBAC:
@@ -316,7 +366,7 @@ Build an image locally with `docker build --build-arg TOOLSET=hello .`.
 
 ## Hosted chat (bring your own model)
 
-`packages/mcp-agent`'s Chainlit UI can also run as a public web app over the
+The runtime's `mcp_agent` Chainlit UI can also run as a public web app over the
 deployed toolsets, at `chat.<shared-domain>`. It is **bring-your-own-model**:
 the deployment holds no provider key. Each user opens ⚙ settings and enters a
 `provider:model` and their own API key (and any per-toolset credential headers);
@@ -461,7 +511,7 @@ connections = httpx.get("https://<host>/").json()["connections"]
 tools = await MultiServerMCPClient(connections).get_tools()
 ```
 
-`packages/mcp-agent` does exactly that as an interactive chat. The model is
+The runtime's `mcp-agent` does exactly that as an interactive chat. The model is
 provider-agnostic and no provider ships by default: `PROVIDER_MODEL` is a
 `provider:model` string passed to LangChain's `init_chat_model` and
 `PROVIDER_API_KEY` is that provider's key. Pick a provider, install its package
@@ -565,10 +615,18 @@ with header_context({"x-demo-token": "secret"}):
 
 ```sh
 ./scripts/format        # ruff autofix + format
-./scripts/lint          # ruff checks + mypy over packages/ and toolsets/
+./scripts/lint          # ruff checks + mypy over tests/ and toolsets/
 ./scripts/test          # pytest (args forwarded, e.g. ./scripts/test -k hello)
 ```
 
-The root `pyproject.toml` defines the uv workspace (`packages/*`,
-`toolsets/*`), shared tool configuration and the dev dependency group;
-`uv.lock` pins the whole workspace consistently.
+The root `pyproject.toml` defines the uv workspace (`toolsets/*`), the
+`mcp-toolsets-runtime` pin, shared tool configuration and the dependency
+groups; `uv.lock` pins the runtime and the whole workspace consistently, and is
+what the images build from.
+
+`tests/` holds only the toolset contract sweep — every directory under
+`toolsets/` must import, export a non-empty `TOOLS`, and satisfy the same
+`ToolResult` and docstring gates `build_server` applies at startup. Tests for
+runtime behaviour live in
+[mcp-toolsets-runtime](https://github.com/developmentseed/mcp-toolsets-runtime),
+not here.

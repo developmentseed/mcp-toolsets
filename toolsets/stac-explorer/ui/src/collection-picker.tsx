@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { onData, sendMessage } from "@developmentseed/mcp-view";
 
-import { onData, sendMessage } from "./host";
 import type { Collection, SearchCollectionsResult } from "./types";
 import "./styles.css";
 

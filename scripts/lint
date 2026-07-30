@@ -4,4 +4,4 @@ set -e
 
 uv run ruff check --select S
 uv run ruff format --check
-uv run mypy packages toolsets
+uv run mypy tests toolsets
