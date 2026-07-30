@@ -109,7 +109,7 @@ cat <<EOF
 
 Bootstrapped to namespace '$ns'. Next steps:
 
-  1. Add your first toolset:        ./scripts/new-toolset my-toolset
+  1. Add your first toolset:        uv run mcp-toolset new my-toolset
   2. Develop locally:               uv sync && ./scripts/test
                                      TOOLSET=hello uv run mcp-serve   # if kept
                                      uv run mcp-cli call hello name=dev

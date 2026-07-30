@@ -3,8 +3,10 @@
 #
 # Usage: scripts/changed-toolsets <before>..<after>
 #
-# Changes to shared code (packages/, charts/, Dockerfile, uv.lock, root
+# Changes to shared build inputs (charts/, Dockerfile, uv.lock, root
 # pyproject.toml) are baked into every image, so they select ALL toolsets.
+# uv.lock covers a runtime upgrade: the runtime is a pinned dependency now, so
+# bumping it lands there rather than in any tracked source directory.
 # Otherwise only the changed toolsets/<name> directories are selected. An
 # unusable range (e.g. first push, before-sha all zeros) selects all toolsets.
 
@@ -25,7 +27,7 @@ if [ -z "$range" ] || ! changed=$(git diff --name-only "$range" 2>/dev/null); th
     exit 0
 fi
 
-if echo "$changed" | grep -qE '^(packages/|charts/|Dockerfile|uv\.lock|pyproject\.toml)'; then
+if echo "$changed" | grep -qE '^(charts/|Dockerfile|uv\.lock|pyproject\.toml)'; then
     all_toolsets | json_array
 else
     echo "$changed" | grep '^toolsets/' | cut -d/ -f2 | json_array

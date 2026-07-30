@@ -2,8 +2,8 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { onData } from "@developmentseed/mcp-view";
 
-import { onData } from "./host";
 import type { Collection, ShowMapResult } from "./types";
 import "./styles.css";
 
