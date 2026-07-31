@@ -107,10 +107,30 @@ producer and the consumer can live in different toolsets on different servers,
 and the parameter leaves the model's schema entirely — it can't be hallucinated
 because it is never offered.
 
-One consequence worth knowing before you read a deployment: `/health` and the
+It also buys *traceability*, which is the part that only exists because the
+parameter is hidden. A filled parameter is absent from the tool call the model
+produced, so runtime 0.2.1 records a **receipt** on the tool message naming the
+key, the kind and the publishing tool. The chat's tool step shows it where the
+argument would have been, and the model is told in one line:
+
+```
+[state used: aoi ← dataset-search/geometry, published by search_datasets]
+```
+
+Receipts are recorded on the handle path too, but rendered on neither side —
+the model wrote `@state:<key>` itself, so the key is already in the arguments.
+Nothing here tags a `Kind`, so nothing here produces a visible receipt yet;
+this is what you gain the moment one does.
+
+Two consequences worth knowing before you read a deployment. `/health` and the
 index report `state.produces` as the list of distinct **kinds**, so the `[]` you
-see today means "nothing is tagged", not "nothing is captured". The per-key
-declarations are in each tool's MCP `_meta`.
+see today means "nothing is tagged", not "nothing is captured" — the per-key
+declarations are in each tool's MCP `_meta`. And the guarantee is about what
+reaches the *model*, not about what leaves the process: LangChain hands every
+tool call the whole agent state, so a tracing backend wired to the chat records
+stored payloads on every subsequent call. That is upstream behaviour, unrelated
+to whether you use session state at all, but it is the wrong thing to discover
+after turning tracing on.
 
 Keeping values out of the context is client-side work, so external hosts do none
 of it — served to Claude.ai or ChatGPT, these toolsets behave like any other, and
