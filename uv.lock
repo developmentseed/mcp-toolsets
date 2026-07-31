@@ -1030,7 +1030,7 @@ index = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.4,<0.2.0" },
+    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.7,<0.2.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -1046,7 +1046,7 @@ index = [{ name = "mcp-toolsets-runtime" }]
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.1.4"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1058,15 +1058,16 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/42/4bfb90602be783c1a5a1e91e3771f6d80a8ce94415562fce1ac38e7045f0/mcp_toolsets_runtime-0.1.4.tar.gz", hash = "sha256:98d56dc781a82ac280f27ba3bdb9567c1b5d9272ad4c6f46b2bfd9b5825661d3", size = 193863, upload-time = "2026-07-30T09:30:34.11Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/85/5ca8ce188976f652096d3191d55151fffabbf40656c0252f9514976483f4/mcp_toolsets_runtime-0.1.7.tar.gz", hash = "sha256:a6ea9d11a7fc6e6ac5f5aa0ee35a27cdbfab5791e2c7d3dcaf57d347ebb5ad21", size = 267898, upload-time = "2026-07-31T16:02:10.721Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/97/796ebaa02b2fd0cd6d00558879f4a1b7741be31ae1df6658509bc8066647/mcp_toolsets_runtime-0.1.4-py3-none-any.whl", hash = "sha256:4c2274d3ac80c5fefc3f2e883f739b7120da34ad48ecc6f282d903c947b535dd", size = 35375, upload-time = "2026-07-30T09:30:32.753Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/4b/62fe90f096bbc76aaaba69604c044b56421fb6e27684efddd0b73c169379/mcp_toolsets_runtime-0.1.7-py3-none-any.whl", hash = "sha256:a10c2ba5edb6e00f830f9115495a9d4133e9b9c79a07426325c3872a2dc6df22", size = 78279, upload-time = "2026-07-31T16:02:09.511Z" },
 ]
 
 [package.optional-dependencies]
 agent = [
     { name = "chainlit" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "langchain" },
 ]
 
