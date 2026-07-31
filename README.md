@@ -69,15 +69,19 @@ smallest thing that deploys) and `credential-demo` (the
 
 Everything that isn't a toolset comes from one PyPI package,
 [`mcp-toolsets-runtime`](https://github.com/developmentseed/mcp-toolsets-runtime),
-bounded in the root `pyproject.toml` and pinned exactly by `uv.lock`. It
-provides four importable modules and their console scripts:
+bounded in the root `pyproject.toml` and pinned exactly by `uv.lock`. Below is
+what you reach for from *this* repo and when; the package's own README is the
+authority on everything it exposes, and stays current when this doesn't:
 
-| Module | Role |
+| Module | What you use it for here |
 | --- | --- |
-| `mcp_runtime` | **Required.** Discovers a toolset's `TOOLS` and serves them as a stateless streamable-HTTP MCP server (`mcp-serve`), with a `/health` route for k8s probes; serves `VIEWS` as `ui://` resources. Also runs the directory service (`mcp-index`). |
+| `mcp_runtime` | **Required.** Serves a toolset's `TOOLS` as a stateless streamable-HTTP MCP server with a `/health` route for k8s probes, and its `VIEWS` as `ui://` resources — `mcp-serve` for one toolset, `mcp-serve-local` for all of them at once. Also runs the directory service (`mcp-index`). |
 | `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
 | `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
 | `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. Needs the `[agent]` extra — drop it from the pin if you don't want a chat host. |
+| `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a key or parameter with a `Kind` is the accelerator on top — see below. |
+
+[session-state]: https://github.com/developmentseed/mcp-toolsets-runtime/blob/main/docs/SESSION-STATE.md
 
 Upgrade with `uv lock --upgrade-package mcp-toolsets-runtime`; because `uv.lock`
 is a shared build input, merging the bump rebuilds and redeploys every toolset.
@@ -88,6 +92,32 @@ This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
 service — `charts/*`, the `Dockerfile`, the workflows, and
 `tests/test_contract.py`.
 
+### Session state, and what tagging a `Kind` adds
+
+Nothing here opts in explicitly, and the mechanism still runs: `search_collections`
+advertises `stac-explorer/collections` in its `_meta`, and driving it from the
+bundled agent moves that list into session state instead of the transcript. Best
+endeavours is the default, so an untagged toolset already gets the context saving.
+
+What a `Kind` tag adds is *resolution between tools*. Untagged, a value is
+addressable only by its key, and the model has to pass it along — as an
+`@state:<key>` handle rather than the value itself, but still by hand. Tagged,
+the consuming tool's parameter is filled from state by kind, which means the
+producer and the consumer can live in different toolsets on different servers,
+and the parameter leaves the model's schema entirely — it can't be hallucinated
+because it is never offered.
+
+One consequence worth knowing before you read a deployment: `/health` and the
+index report `state.produces` as the list of distinct **kinds**, so the `[]` you
+see today means "nothing is tagged", not "nothing is captured". The per-key
+declarations are in each tool's MCP `_meta`.
+
+Keeping values out of the context is client-side work, so external hosts do none
+of it — served to Claude.ai or ChatGPT, these toolsets behave like any other, and
+tool returns still have to be a sensible size on their own. The full contract,
+with sequence diagrams and a runnable demo, is in the runtime's
+[SESSION-STATE.md][session-state].
+
 ## Quickstart
 
 ```sh
@@ -95,25 +125,31 @@ uv sync                # runtime from PyPI + every toolset, into one .venv
 ./scripts/test         # run all tests
 ./scripts/lint         # ruff + mypy (./scripts/format to autofix)
 
-# Serve a toolset locally
+# Serve every toolset in one process, with the index at /
+uv run mcp-serve-local
+
+# ...or a single toolset on its own, the way production runs it
 TOOLSET=hello uv run mcp-serve
 
-# Serve more toolsets alongside it, each on its own port
-TOOLSET=credential-demo PORT=8001 uv run mcp-serve
-
 # Talk to them from another shell
-uv run mcp-cli list
-uv run mcp-cli call hello name=dev
-uv run mcp-cli repl
-uv run mcp-cli call whoami --url http://localhost:8001/mcp -H "X-Demo-Token: s3cret"
+uv run mcp-cli list --url http://localhost:8000/hello/mcp
+uv run mcp-cli call hello name=dev --url http://localhost:8000/hello/mcp
+uv run mcp-cli repl --url http://localhost:8000/hello/mcp
+uv run mcp-cli call whoami \
+  --url http://localhost:8000/credential-demo/mcp -H "X-Demo-Token: s3cret"
 ```
 
-`mcp-cli` defaults to `http://localhost:8000/mcp`; pass `--url` to point
-elsewhere. Each `mcp-serve` process serves exactly one toolset — the same
-shape as production, where every toolset is its own pod and Service.
-Toolsets are also importable directly (e.g.
-`from hello.tools import TOOLS`) for in-process use in tests, notebooks or an
-agent repo.
+`mcp-serve-local` mounts each toolset at `/<name>/mcp` and serves the index
+document at `/` — the same URL shape the shared domain has in production, so an
+`mcp-cli`, an `mcp-agent` or an MCP Inspector session can be pointed at it
+unchanged. Use it for the inner loop; reach for `mcp-serve` when you want a
+toolset isolated exactly as its own pod runs it (one process, one toolset,
+`/mcp` at the root, `PORT` to move it).
+
+`mcp-cli` defaults to `http://localhost:8000/mcp`, which is where a bare
+`mcp-serve` puts a toolset — hence the explicit `--url` above. Toolsets are also
+importable directly (e.g. `from hello.tools import TOOLS`) for in-process use in
+tests, notebooks or an agent repo.
 
 ## Adding a toolset
 
@@ -381,6 +417,15 @@ shared-code change or a `workflow_dispatch` run). There is no built-in auth —
 BYOM removes the shared-key abuse risk, but put an auth proxy in front (or
 enable Chainlit auth) if you need to restrict who can use it.
 
+Conversations are checkpointed per thread, **in the pod's memory by default** —
+so a restart, a redeploy or a scale-up past the chart's single replica loses
+them. That is fine for demos and is why nothing extra is deployed for it. To
+keep conversations, point `MCP_AGENT_CHECKPOINT` at a PostgreSQL URL and add the
+runtime's `[checkpointing-postgres]` extra to the chat image. The same
+per-thread state also carries what the toolsets published, so if you do adopt
+`mcp_state`, where conversations live becomes a real decision rather than a
+detail.
+
 ## Kubernetes cluster setup
 
 The deploy workflow assumes an existing cluster. Minimum requirements: a
@@ -523,10 +568,14 @@ uv add langchain-openai                          # one-time: install a provider
 export PROVIDER_MODEL=openai:gpt-4o-mini PROVIDER_API_KEY=sk-...
 
 uv run mcp-agent https://<host>/                # all deployed toolsets
+uv run mcp-agent http://localhost:8000/         # or every toolset from mcp-serve-local
 uv run mcp-agent http://localhost:8000/mcp      # or one local mcp-serve
 uv run mcp-agent --model anthropic:claude-3-5-haiku-latest   # override the model
 uv run mcp-agent                                # url + model from .env
 ```
+
+An index URL and a single server URL are both accepted, so the local loop above
+and the deployed domain are the same command with a different argument.
 
 Any `init_chat_model` provider works (`openai:`, `anthropic:`, `mistralai:`,
 …) — switching is a `PROVIDER_MODEL` change plus that provider's package. The
