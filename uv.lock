@@ -1030,7 +1030,7 @@ index = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.7,<0.2.0" },
+    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.1.8,<0.2.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -1046,7 +1046,7 @@ index = [{ name = "mcp-toolsets-runtime" }]
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.1.7"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1058,9 +1058,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/85/5ca8ce188976f652096d3191d55151fffabbf40656c0252f9514976483f4/mcp_toolsets_runtime-0.1.7.tar.gz", hash = "sha256:a6ea9d11a7fc6e6ac5f5aa0ee35a27cdbfab5791e2c7d3dcaf57d347ebb5ad21", size = 267898, upload-time = "2026-07-31T16:02:10.721Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/38/3a190abe2e063d493f6067838406dc61aeb34ff2948173689e2b05b7984b/mcp_toolsets_runtime-0.1.8.tar.gz", hash = "sha256:f5621fe89b8be99910550f3bb9e64bb0e7026a43443bdbd2a17d718ac74a68ab", size = 268627, upload-time = "2026-07-31T16:55:31.537Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/4b/62fe90f096bbc76aaaba69604c044b56421fb6e27684efddd0b73c169379/mcp_toolsets_runtime-0.1.7-py3-none-any.whl", hash = "sha256:a10c2ba5edb6e00f830f9115495a9d4133e9b9c79a07426325c3872a2dc6df22", size = 78279, upload-time = "2026-07-31T16:02:09.511Z" },
+    { url = "https://files.pythonhosted.org/packages/33/4f/cd1abf618c8e2ff29e30226476e1f887da6b7c53d57dc9f61088d8380f47/mcp_toolsets_runtime-0.1.8-py3-none-any.whl", hash = "sha256:8d0e85b080eede22150156bb5e85a43f15dd816d3ecd765d495439326eb2957a", size = 78902, upload-time = "2026-07-31T16:55:30.372Z" },
 ]
 
 [package.optional-dependencies]
