@@ -8,7 +8,7 @@ dependencies = [
     # The shared runtime, installed from PyPI — mcp_runtime (mcp-serve /
     # mcp-index), mcp_cli, mcp_toolset, and with [agent] the Chainlit chat host.
     # Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[agent]<0.2.0,>=0.1.8",
+    "mcp-toolsets-runtime[agent]<0.3.0,>=0.2.0",
     "credential-demo",
     "hello",
     "stac-explorer",
