@@ -1,7 +1,7 @@
 [project]
 name = "duckdb-analyst"
 version = "0.1.0"
-description = "Read-only, sandbox-free SQL analysis over public parquet/STAC datasets (Overture Maps, Natural Earth, STAC) via DuckDB."
+description = "Read-only, sandbox-free SQL analysis over public parquet datasets (Natural Earth, plus any public parquet/CSV URL) via DuckDB."
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "duckdb>=1.5.5,<2.0.0",

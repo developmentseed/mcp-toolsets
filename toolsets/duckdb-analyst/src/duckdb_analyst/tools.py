@@ -1,11 +1,12 @@
 """LangChain tools for duckdb-analyst: sandbox-free SQL analysis over public
-parquet/STAC datasets via a security-hardened, read-only DuckDB connection.
+parquet datasets via a security-hardened, read-only DuckDB connection.
 
 Three tools, deliberately minimal: explore what's available (`list_sources`),
 run a SELECT (`query`), or run one and drop the rows straight into a
-caller-supplied Vega-Lite spec (`chart`). No bespoke per-dataset tool — STAC
-search is just another SQL table function reachable through `query`/`chart`,
-documented via `list_sources` (see `connection.SOURCES`).
+caller-supplied Vega-Lite spec (`chart`). No bespoke per-dataset tool — a new
+dataset is a `CREATE VIEW` in `connection.py`, not a fourth tool, and it
+becomes reachable through `query`/`chart` and discoverable via `list_sources`
+(see `connection.SOURCES`).
 
 The actual security model (why arbitrary SQL is safe to run here) lives in
 `connection.py`'s module docstring — read that before changing anything here.
@@ -131,11 +132,13 @@ async def _run_query(
 
 @tool
 def list_sources() -> ListSourcesResult:
-    """List the pre-registered views and SQL table functions available to
-    `query`/`chart`: Overture Maps divisions/places, Natural Earth countries/
-    populated places, and STAC search — with column descriptions and which
+    """List the pre-registered views available to `query`/`chart`: Natural
+    Earth countries and populated places — with column descriptions and which
     columns work well as x/y/color chart channels. Call this before writing
     SQL against an unfamiliar source.
+
+    `query`/`chart` are not limited to these: they also read any public
+    `https://` or `s3://` parquet or CSV URL via `read_parquet`/`read_csv`.
     """
     names = ", ".join(source["name"] for source in SOURCES)
     return ListSourcesResult(
