@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     # The shared runtime, installed from PyPI — mcp_runtime (mcp-serve /
-    # mcp-index), mcp_cli, mcp_toolset, and with [agent] the Chainlit chat host.
-    # Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[agent]<0.5.0,>=0.4.2",
+    # mcp-index), mcp_cli, mcp_toolset, and with [web] the Chainlit chat host.
+    # [web] is here for the dev environment, which runs `mcp-agent-web` and
+    # `mcp-agent install-elements`; the toolset images sync with `--package` and
+    # so never see it. Upgrade by bumping this range and running `uv lock`.
+    "mcp-toolsets-runtime[web]<0.6.0,>=0.5.0",
     "credential-demo",
     "hello",
     "stac-explorer",
@@ -20,8 +22,9 @@ dependencies = [
 # exactly this, at the version uv.lock already pins for everything else.
 index = ["mcp-toolsets-runtime"]
 # Likewise for the hosted chat image (Dockerfile.chat): the agent and its
-# Chainlit stack, no toolsets.
-chat = ["mcp-toolsets-runtime[agent]"]
+# Chainlit stack, no toolsets. [web] rather than [agent] since 0.5.0 — the
+# runtime split the Chainlit host out so an API deployment need not install it.
+chat = ["mcp-toolsets-runtime[web]"]
 dev = [
     "pytest<10.0.0,>=9.0.3",
     "pytest-asyncio<2.0.0,>=1.4.0",

@@ -1008,13 +1008,13 @@ source = { virtual = "." }
 dependencies = [
     { name = "credential-demo" },
     { name = "hello" },
-    { name = "mcp-toolsets-runtime", extra = ["agent"] },
+    { name = "mcp-toolsets-runtime", extra = ["web"] },
     { name = "stac-explorer" },
 ]
 
 [package.dev-dependencies]
 chat = [
-    { name = "mcp-toolsets-runtime", extra = ["agent"] },
+    { name = "mcp-toolsets-runtime", extra = ["web"] },
 ]
 dev = [
     { name = "mypy" },
@@ -1030,12 +1030,12 @@ index = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.4.2,<0.5.0" },
+    { name = "mcp-toolsets-runtime", extras = ["web"], specifier = ">=0.5.0,<0.6.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
 [package.metadata.requires-dev]
-chat = [{ name = "mcp-toolsets-runtime", extras = ["agent"] }]
+chat = [{ name = "mcp-toolsets-runtime", extras = ["web"] }]
 dev = [
     { name = "mypy", specifier = ">=1.19.1,<2.0.0" },
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
@@ -1046,10 +1046,11 @@ index = [{ name = "mcp-toolsets-runtime" }]
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.4.2"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-mcp-adapters" },
     { name = "mcp" },
@@ -1058,15 +1059,14 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/66/3810683a887178f19de68ede5d6baece7f275ad9b1f93adb84f047942272/mcp_toolsets_runtime-0.4.2.tar.gz", hash = "sha256:69f86aaa1cb6f26b03d8e5968a71f170edba6d3e28f9872da42e1803d543495c", size = 290313, upload-time = "2026-08-11T10:58:25.315Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/2b/7c78e80a1788e72e0869288f15dc4e89338955c1243e201aa86d94d07812/mcp_toolsets_runtime-0.5.0.tar.gz", hash = "sha256:85046d1cba191c835ca047fa23b9c059ee3868e7aa06470e2f9061bd8cffc60a", size = 291959, upload-time = "2026-08-11T13:20:41.614Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/9b/b6bf8ab4cacb0a5ebe18377af78093069f08ec1137a66957525531702abc/mcp_toolsets_runtime-0.4.2-py3-none-any.whl", hash = "sha256:de1feb6770be28009d357fa2dffb28b20608a032dde0be4e63117bb9670c6a43", size = 89574, upload-time = "2026-08-11T10:58:23.728Z" },
+    { url = "https://files.pythonhosted.org/packages/de/c4/871bf9cd38a7069b83dadc7b0fcd4af430ec60b90c5a622db8a7fe83defd/mcp_toolsets_runtime-0.5.0-py3-none-any.whl", hash = "sha256:7ea9b9e9c0d3163b9dd97ee165ddcc0c948f6bac979e5f06731ad5d4aaefe769", size = 89935, upload-time = "2026-08-11T13:20:40.509Z" },
 ]
 
 [package.optional-dependencies]
-agent = [
+web = [
     { name = "chainlit" },
-    { name = "httpx" },
     { name = "jsonschema" },
     { name = "langchain" },
 ]

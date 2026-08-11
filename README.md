@@ -78,7 +78,7 @@ authority on everything it exposes, and stays current when this doesn't:
 | `mcp_runtime` | **Required.** Serves a toolset's `TOOLS` as a stateless streamable-HTTP MCP server with a `/health` route for k8s probes, and its `VIEWS` as `ui://` resources — `mcp-serve` for one toolset, `mcp-serve-local` for all of them at once. Also runs the directory service (`mcp-index`). |
 | `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
 | `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
-| `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. Needs the `[agent]` extra — drop it from the pin if you don't want a chat host. |
+| `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. `mcp-agent-web` needs the `[web]` extra; `[agent]` alone gives `build_agent`, `run_turn` and the host helpers without Chainlit, for a frontend of your own. Drop the extra from the pin if you want neither. |
 | `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a key or parameter with a `Kind` is the accelerator on top — see below. |
 
 [session-state]: https://github.com/developmentseed/mcp-toolsets-runtime/blob/main/docs/SESSION-STATE.md
