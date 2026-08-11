@@ -1030,7 +1030,7 @@ index = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.3.0,<0.4.0" },
+    { name = "mcp-toolsets-runtime", extras = ["agent"], specifier = ">=0.4.2,<0.5.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -1046,7 +1046,7 @@ index = [{ name = "mcp-toolsets-runtime" }]
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.3.0"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1058,9 +1058,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/16/47094311cafe3b30e2202e3db844cc51e385b1b672c5f78fd252f35ef406/mcp_toolsets_runtime-0.3.0.tar.gz", hash = "sha256:4c40ff159ac6353afca57009132311108f097d8f71073eba78ec8759dee21a0a", size = 285988, upload-time = "2026-08-03T15:05:06.382Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/66/3810683a887178f19de68ede5d6baece7f275ad9b1f93adb84f047942272/mcp_toolsets_runtime-0.4.2.tar.gz", hash = "sha256:69f86aaa1cb6f26b03d8e5968a71f170edba6d3e28f9872da42e1803d543495c", size = 290313, upload-time = "2026-08-11T10:58:25.315Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/81/83a5a83c55a3730a2ab62d0b7366f5097863acdb78dd45878ebcb0cfd7fb/mcp_toolsets_runtime-0.3.0-py3-none-any.whl", hash = "sha256:6105ac3106495d37141dae0af0ed7642a6597e2eed429723f6ca9d5a1a1804af", size = 87312, upload-time = "2026-08-03T15:05:05.1Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/9b/b6bf8ab4cacb0a5ebe18377af78093069f08ec1137a66957525531702abc/mcp_toolsets_runtime-0.4.2-py3-none-any.whl", hash = "sha256:de1feb6770be28009d357fa2dffb28b20608a032dde0be4e63117bb9670c6a43", size = 89574, upload-time = "2026-08-11T10:58:23.728Z" },
 ]
 
 [package.optional-dependencies]

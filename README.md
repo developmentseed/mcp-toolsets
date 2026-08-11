@@ -117,10 +117,21 @@ argument would have been, and the model is told in one line:
 [state used: aoi ← dataset-search/geometry, published by search_datasets]
 ```
 
-Receipts are recorded on the handle path too, but rendered on neither side —
-the model wrote `@state:<key>` itself, so the key is already in the arguments.
-Nothing here tags a `Kind`, so nothing here produces a visible receipt yet;
-this is what you gain the moment one does.
+Receipts are recorded on the handle path too. The model is still told nothing —
+it wrote `@state:<key>` itself, so the key is already in the arguments — but
+since runtime 0.4.2 the chat's tool step annotates the handle with what the key
+resolved to, which the bare string does not say:
+
+```
+request: @state:stac-explorer/collections · untyped · 12 item(s) · from search_collections
+```
+
+Neither path is visible in this repo yet, for two separate reasons. Nothing tags
+a `Kind`, so no parameter is ever filled by declaration. And the `@state:<key>`
+form is only offered on `object` and `array` parameters, whereas every tool here
+takes scalars — `hello(name)`, `whoami()`, `search_collections(query, limit)`,
+`show_map(collection_id)`. A tool taking a structured parameter would light up
+the handle path on its own, without tagging anything.
 
 Two consequences worth knowing before you read a deployment. `/health` and the
 index report `state.produces` as the list of distinct **kinds**, so the `[]` you
