@@ -14,6 +14,7 @@ dependencies = [
     "credential-demo",
     "hello",
     "stac-explorer",
+    "duckdb-analyst",
 ]
 
 [dependency-groups]
@@ -44,6 +45,7 @@ members = ["toolsets/*"]
 credential-demo = { workspace = true }
 hello = { workspace = true }
 stac-explorer = { workspace = true }
+duckdb-analyst = { workspace = true }
 
 [tool.ruff]
 line-length = 88
