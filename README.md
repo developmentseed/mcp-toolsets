@@ -79,7 +79,7 @@ authority on everything it exposes, and stays current when this doesn't:
 | `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
 | `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
 | `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. `mcp-agent-web` needs the `[web]` extra; `[agent]` alone gives `build_agent`, `run_turn` and the host helpers without Chainlit, for a frontend of your own. Drop the extra from the pin if you want neither. |
-| `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a key or parameter with a `Kind` is the accelerator on top — see below. |
+| `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a parameter `NotAuthored` is the accelerator on top — see below. |
 
 [session-state]: https://github.com/developmentseed/mcp-toolsets-runtime/blob/main/docs/SESSION-STATE.md
 
@@ -92,56 +92,56 @@ This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
 service — `charts/*`, the `Dockerfile`, the workflows, and
 `tests/test_contract.py`.
 
-### Session state, and what tagging a `Kind` adds
+### Session state, and what tagging `NotAuthored` adds
 
 Nothing here opts in explicitly, and the mechanism still runs: `search_collections`
-advertises `stac-explorer/collections` in its `_meta`, and driving it from the
-bundled agent moves that list into session state instead of the transcript. Best
-endeavours is the default, so an untagged toolset already gets the context saving.
+advertises `stac-explorer/search_collections/collections` in its `_meta`, and
+driving it from the bundled agent moves that list into session state instead of
+the transcript. Best endeavours is the default, so an untagged toolset already
+gets the context saving.
 
-What a `Kind` tag adds is *resolution between tools*. Untagged, a value is
-addressable only by its key, and the model has to pass it along — as an
-`@state:<key>` handle rather than the value itself, but still by hand. Tagged,
-the consuming tool's parameter is filled from state by kind, which means the
-producer and the consumer can live in different toolsets on different servers,
-and the parameter leaves the model's schema entirely — it can't be hallucinated
-because it is never offered.
+A state key is three parts — `<toolset>/<tool>/<field>` — and it is the whole
+contract. There is no type to agree on: the producer names the value, and a
+consumer that wants it names the same key. Which also means the key is a
+**public name**, changeable only the way any published identifier is.
 
-It also buys *traceability*, which is the part that only exists because the
-parameter is hidden. A filled parameter is absent from the tool call the model
-produced, so runtime 0.2.1 records a **receipt** on the tool message naming the
-key, the kind and the publishing tool. The chat's tool step shows it where the
-argument would have been, and the model is told in one line:
+What tagging a parameter `NotAuthored` adds is a *constraint*, not a type. It
+says one thing — a model must not write this value — and an `mcp_state` client
+narrows the parameter until the only thing it accepts is a reference to a value
+some tool already produced. A client that has never heard of the tag still gets
+the sentence appended to the parameter's description, and mostly obeys it; one
+that ignores `_meta` entirely sees a normal parameter and is no worse off than
+before.
 
-```
-[state used: aoi ← dataset-search/geometry, published by search_datasets]
-```
-
-Receipts are recorded on the handle path too. The model is still told nothing —
-it wrote `@state:<key>` itself, so the key is already in the arguments — but
-since runtime 0.4.2 the chat's tool step annotates the handle with what the key
-resolved to, which the bare string does not say:
+What the model writes either way is an `@state:<key>` handle rather than the
+value, so the chat's tool step annotates the handle with what the key resolved
+to — which the bare string does not say:
 
 ```
-request: @state:stac-explorer/collections · untyped · 12 item(s) · from search_collections
+request: @state:stac-explorer/search_collections/collections · 12 item(s) · from search_collections · query written by the model
 ```
 
-Neither path is visible in this repo yet, for two separate reasons. Nothing tags
-a `Kind`, so no parameter is ever filled by declaration. And the `@state:<key>`
-form is only offered on `object` and `array` parameters, whereas every tool here
-takes scalars — `hello(name)`, `whoami()`, `search_collections(query, limit)`,
-`show_map(collection_id)`. A tool taking a structured parameter would light up
-the handle path on its own, without tagging anything.
+That last clause is the provenance: the call that produced this value was given
+`query` by the model rather than from state, and a reader deciding how much to
+trust the result wants to know it.
+
+None of this is visible in this repo yet, and the reason is not tagging. The
+`@state:<key>` form is only offered on `object` and `array` parameters, whereas
+every tool here takes scalars — `hello(name)`, `whoami()`,
+`search_collections(query, limit)`, `show_map(collection_id)`. A tool taking a
+structured parameter would light up the handle path on its own, without tagging
+anything.
 
 Two consequences worth knowing before you read a deployment. `/health` and the
-index report `state.produces` as the list of distinct **kinds**, so the `[]` you
-see today means "nothing is tagged", not "nothing is captured" — the per-key
-declarations are in each tool's MCP `_meta`. And the guarantee is about what
-reaches the *model*, not about what leaves the process: LangChain hands every
-tool call the whole agent state, so a tracing backend wired to the chat records
-stored payloads on every subsequent call. That is upstream behaviour, unrelated
-to whether you use session state at all, but it is the wrong thing to discover
-after turning tracing on.
+index report `state.produces` as one entry per published data key — `{tool,
+field, state_key}` — so `stac-explorer` lists three and `hello` lists none;
+alongside it `state.not_authored` is `[]` here, which means "nothing is tagged",
+not "nothing is captured". And the guarantee is about what reaches the *model*,
+not about what leaves the process: LangChain hands every tool call the whole
+agent state, so a tracing backend wired to the chat records stored payloads on
+every subsequent call. That is upstream behaviour, unrelated to whether you use
+session state at all, but it is the wrong thing to discover after turning
+tracing on.
 
 Keeping values out of the context is client-side work, so external hosts do none
 of it — served to Claude.ai or ChatGPT, these toolsets behave like any other, and

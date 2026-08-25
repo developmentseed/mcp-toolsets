@@ -10,7 +10,7 @@ dependencies = [
     # [web] is here for the dev environment, which runs `mcp-agent-web` and
     # `mcp-agent install-elements`; the toolset images sync with `--package` and
     # so never see it. Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[web]<0.8.0,>=0.7.0",
+    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.0",
     "credential-demo",
     "hello",
     "stac-explorer",
