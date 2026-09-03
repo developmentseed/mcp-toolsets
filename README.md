@@ -277,6 +277,10 @@ Rules and gotchas:
 - Keys not declared in the annotation are silently dropped from
   `structuredContent` — the annotation is the complete list of keys a client
   can see, and mypy flags undeclared keys in return literals.
+- Arguments are the mirror image: since runtime 0.8.1 a parameter the tool
+  doesn't declare is a validation error naming it, not a silently ignored
+  argument, and the published input schema says so with
+  `additionalProperties: false`.
 - Union arms must all be TypedDicts/pydantic models; bare `str`/`list`
   returns and `dict[str, Any]` are rejected at startup (FastMCP would wrap
   the former in `{"result": ...}`, changing your payload shape; the latter
