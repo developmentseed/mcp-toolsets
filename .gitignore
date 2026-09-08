@@ -32,3 +32,6 @@ toolsets/*/src/*/views/
 .idea/
 .vscode/
 .DS_Store
+
+# CDK synthesises here; a build artifact like the view bundles.
+cdk.out/
