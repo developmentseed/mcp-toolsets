@@ -126,7 +126,10 @@ jobs:
         run: |
           for release in $(helm list --namespace "$MCP_NAMESPACE" --short); do
             case "$release" in
-              mcp-index) continue ;;
+              # The releases this workflow installs that are not toolsets. A
+              # name here that stops being skipped is uninstalled on the next
+              # deploy, because no toolsets/<name> directory will ever back it.
+              mcp-index | mcp-chat) continue ;;
               mcp-*) toolset="${release#mcp-}" ;;
               *) continue ;;
             esac
