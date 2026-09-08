@@ -2,8 +2,8 @@
 # Remove a toolset: scripts/remove-toolset <name>
 #
 # Deletes toolsets/<name> and deregisters it from the uv workspace. Merging
-# the removal to main uninstalls the deployed mcp-<name> release: the deploy
-# workflow reconciles the cluster against the toolsets/ directory.
+# the removal to main takes the deployed mcp-<name> service with it: the deploy
+# reconciles what is running against the toolsets/ directory.
 
 set -e
 
@@ -26,9 +26,15 @@ uv sync
 
 echo
 echo "Removed $dir and deregistered it from the workspace."
-echo "Merge to main: the deploy workflow uninstalls the mcp-$name release."
+echo "Merge to main: the deploy takes the mcp-$name service down."
+# target:k8s
 echo "Not removed automatically: out-of-band Secrets the toolset listed in"
 echo "toolset.yaml, and its images in GHCR."
+# /target:k8s
+# target:aws
+echo "Not removed automatically: Parameter Store values the toolset listed in"
+echo "toolset.aws.yaml, its image-tag parameter, and its images in GHCR."
+# /target:aws
 
 # Other code or docs may still reference the toolset (README examples, tests
 # using it as a fixture, ...). Surface them so the removal ships clean.

@@ -1,9 +1,13 @@
 # One Dockerfile, two products, both selected by --build-arg TOOLSET:
 #   TOOLSET=<name>     a toolsets/<name> service     (CMD mcp-serve)
+# target:k8s
 #   TOOLSET=index      the directory of all toolsets (command: mcp-index)
-#   TOOLSET=index-aws  the same, for the AWS target — it discovers toolsets
-#                      through the ECS and Cloud Map APIs, so it needs the
-#                      runtime's [aws] extra that a cluster deployment does not
+# /target:k8s
+# target:aws
+#   TOOLSET=index-aws  the directory of all toolsets, for the AWS target — it
+#                      discovers them through the ECS and Cloud Map APIs, so it
+#                      needs the runtime's [aws] extra a cluster does not
+# /target:aws
 # Both run code from the mcp-toolsets-runtime package; nothing in this repo is
 # the runtime.
 #
@@ -38,10 +42,11 @@ COPY . .
 COPY --from=ui /out/ ./
 # The index serves no toolset — it only needs the runtime, which the `index`
 # dependency groups pin to the same locked version every toolset image gets.
-# Both index sentinels name a group rather than a toolset, so `--only-group`
-# takes the name straight from the build arg.
+# Every index sentinel names a group rather than a toolset, so `--only-group`
+# takes the name straight from the build arg; matching them by shape rather
+# than by name is what lets a target be pruned without editing this line.
 RUN case "${TOOLSET}" in \
-      index | index-aws) \
+      index | index-*) \
         uv sync --frozen --no-dev --no-editable --only-group "${TOOLSET}" ;; \
       *) \
         uv sync --frozen --no-dev --no-editable --package "${TOOLSET}" ;; \

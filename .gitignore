@@ -33,5 +33,7 @@ toolsets/*/src/*/views/
 .vscode/
 .DS_Store
 
+# target:aws
 # CDK synthesises here; a build artifact like the view bundles.
 cdk.out/
+# /target:aws

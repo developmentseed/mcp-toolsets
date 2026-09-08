@@ -1,7 +1,10 @@
 #!/usr/bin/env sh
-# The toolsets and their contract. The AWS stack's own tests are not in here:
-# they import aws-cdk-lib, which needs node, so they run in CI's `synth` job
-# and locally with `uv run --group infra pytest infra`.
+# The toolsets and their contract.
+# target:aws
+# The AWS stack's own tests are not in here: they import aws-cdk-lib, which
+# needs node, so they run in CI's `synth` job and locally with
+# `uv run --group infra pytest infra`.
+# /target:aws
 
 set -e
 

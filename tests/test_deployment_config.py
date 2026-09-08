@@ -42,15 +42,18 @@ def test_every_declared_template_exists():
         assert (ROOT / entry["template"]).is_file(), entry["template"]
 
 
-def test_both_targets_are_declared():
-    """This repo is the template and carries both; an instance drops one at
-    bootstrap, along with the directory it points into."""
+def test_the_declared_targets_are_ones_this_repo_has():
+    """The template carries both; `scripts/prune-target` drops one at bootstrap,
+    so a declaration that is a subset is a bootstrapped instance, not a bug."""
     paths = {entry["path"] for entry in declared()}
-    assert paths == {"toolset.yaml", "toolset.aws.yaml"}
+    assert paths and paths <= {"toolset.yaml", "toolset.aws.yaml"}
 
 
 def test_the_helm_examples_are_keys_the_chart_accepts():
     template = ROOT / "infra/k8s/toolset.template.yaml"
+    if not template.is_file():
+        return  # an instance that kept AWS
+
     top_level = {
         match["key"]
         for match in re.finditer(
@@ -64,6 +67,8 @@ def test_the_aws_examples_are_fields_the_stack_reads():
     """Parsed from the source rather than imported: the stack needs node, and
     this test runs where there is none."""
     template = ROOT / "infra/cdk/toolset.template.yaml"
+    if not template.is_file():
+        return  # an instance that kept Kubernetes
     tree = ast.parse(STACK_CONFIG.read_text())
     toolset = next(
         node

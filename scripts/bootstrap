@@ -2,85 +2,194 @@
 # One-time template bootstrap. Run this once, after creating a repository from
 # the template:
 #
-#   ./scripts/bootstrap [namespace] [--remove-examples | --keep-examples]
+#   ./scripts/bootstrap [--target k8s|aws] [name] [--region <region>]
+#                       [--remove-examples | --keep-examples]
 #
-# It does two things:
-#   1. Sets the MCP_NAMESPACE GitHub Actions variable to the Kubernetes
-#      namespace your toolsets deploy into (default: mcp-toolsets). It is a
-#      repo variable, not a committed value, so it never copies into repos
-#      generated from this template.
-#   2. Optionally removes the shipped example toolsets (hello, credential-demo).
+# It does three things:
+#   1. Keeps one deployment target and removes the other, via
+#      scripts/prune-target — the workflow, the directory under infra/, the
+#      dependency groups, each toolset's config file for it, and its half of
+#      the docs. A change to the working tree for you to commit, not a setting.
+#   2. Sets the GitHub Actions variables that target's deploy reads:
+#      MCP_NAMESPACE for Kubernetes, MCP_AWS_INSTANCE and MCP_AWS_REGION for
+#      AWS. Repo variables, not committed values, so they never copy into repos
+#      generated from this one.
+#   3. Optionally removes the shipped example toolsets (hello, credential-demo).
 #
-# Re-running is safe: setting the variable is idempotent, and example removal
-# skips any toolset already gone. Everything else (the GHCR image path, the
-# index host) is configured at deploy time from GitHub secrets.
+# Re-running is safe: pruning a target that is already gone does nothing,
+# setting a variable is idempotent, and example removal skips what has gone.
+# Asking for a target this repo no longer has is an error rather than a
+# no-op — that request means one of us has the wrong repo. Everything else
+# (the GHCR image path, the hostnames) is configured at deploy time from
+# GitHub secrets.
 
 set -e
 
-DEFAULT_NS="mcp-toolsets"
+DEFAULT_NAME="mcp-toolsets"
 EXAMPLES="hello credential-demo"
 
 usage() {
-    echo "usage: scripts/bootstrap [namespace] [--remove-examples | --keep-examples]" >&2
+    echo "usage: scripts/bootstrap [--target k8s|aws] [name] [--region <region>]" >&2
+    echo "                         [--remove-examples | --keep-examples]" >&2
 }
 
-ns=""
+target=""
+name=""
+region=""
 remove_mode=""  # "" prompt, "all" remove every example, "none" keep them
 while [ $# -gt 0 ]; do
     case "$1" in
+        --target) shift; target="$1" ;;
+        --region) shift; region="$1" ;;
         --remove-examples) remove_mode="all" ;;
         --keep-examples) remove_mode="none" ;;
-        --namespace) shift; ns="$1" ;;
+        --namespace | --instance) shift; name="$1" ;;
         -h | --help) usage; exit 0 ;;
         -*) echo "error: unknown option '$1'" >&2; usage; exit 1 ;;
-        *) ns="$1" ;;
+        *) name="$1" ;;
     esac
-    shift
+    # Guarded, because an option given as the last argument has already
+    # consumed the rest inside its case arm. Shifting past the end fails, and
+    # under `set -e` that is an exit with nothing said.
+    [ $# -gt 0 ] && shift
 done
 
-# --- 1. Namespace --------------------------------------------------------
-if [ -z "$ns" ]; then
-    printf "Kubernetes namespace for this deployment [%s]: " "$DEFAULT_NS"
-    read -r ns || true
-    ns="${ns:-$DEFAULT_NS}"
+kebab() {
+    case "$1" in
+        "")
+            echo "error: $2 is required" >&2
+            exit 1
+            ;;
+        *[!a-z0-9-]* | -* | *-)
+            echo "error: $2 must be kebab-case (lowercase letters, digits, hyphens)" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# A repo variable rather than a committed value, so it never copies into repos
+# generated from this one. `gh` is the only way to set one from here; without
+# it, print the command and carry on rather than failing the whole bootstrap.
+set_variable() {
+    if command -v gh >/dev/null 2>&1 && gh variable set "$1" --body "$2" 2>/dev/null; then
+        echo "Set repo variable $1=$2"
+    else
+        echo "Set it yourself (gh missing, unauthenticated, or no remote):"
+        echo "  gh variable set $1 --body $2"
+    fi
+}
+
+# --- 1. Deployment target ------------------------------------------------
+# What is still here decides what can be chosen. A repo that has already been
+# bootstrapped carries one target, and the prompt below is skipped entirely.
+have_k8s=""; [ -d infra/k8s ] && have_k8s="yes"
+have_aws=""; [ -d infra/cdk ] && have_aws="yes"
+
+if [ -z "$have_k8s" ] && [ -z "$have_aws" ]; then
+    echo "error: neither infra/k8s nor infra/cdk is here — is this the template?" >&2
+    exit 1
 fi
-case "$ns" in
-    *[!a-z0-9-]* | -* | *-)
-        echo "error: namespace must be kebab-case (lowercase letters, digits, hyphens)" >&2
+
+if [ -n "$have_k8s" ] && [ -z "$have_aws" ]; then
+    already="k8s"
+elif [ -z "$have_k8s" ] && [ -n "$have_aws" ]; then
+    already="aws"
+else
+    already=""
+fi
+
+if [ -n "$already" ]; then
+    if [ -n "$target" ] && [ "$target" != "$already" ]; then
+        echo "error: this repo is already on the '$already' target; '$target' was" >&2
+        echo "       pruned and is not coming back from here (try git history)." >&2
         exit 1
-        ;;
+    fi
+    target="$already"
+    echo "Target: $target (the other one is already pruned)"
+fi
+
+while [ -z "$target" ]; do
+    echo "Deployment target:"
+    echo "  k8s  Kubernetes — a Helm release per toolset, deployed with a kubeconfig"
+    echo "  aws  AWS without EKS — ECS on Fargate, one CDK stack, a federated role"
+    printf "Keep which? [k8s/aws]: "
+    read -r target || true
+    case "$target" in
+        k8s | aws) ;;
+        *) echo "Answer 'k8s' or 'aws'."; target="" ;;
+    esac
+done
+case "$target" in
+    k8s | aws) ;;
+    *) echo "error: --target must be 'k8s' or 'aws'" >&2; exit 1 ;;
 esac
 
-# The namespace has two homes:
-#   1. the MCP_NAMESPACE repo Actions variable, which the deploy workflow reads —
-#      kept out of committed files so it never copies into generated repos; and
-#   2. the __MCP_NAMESPACE__ placeholder in the docs' manual cluster-setup
-#      commands, substituted here so those commands are copy-pasteable.
-# Deploys need the variable *and* the KUBE_CONFIG secret (see closing notes).
-if command -v gh >/dev/null 2>&1 && gh variable set MCP_NAMESPACE --body "$ns" 2>/dev/null; then
-    echo "Namespace: set repo variable MCP_NAMESPACE=$ns"
-else
-    echo "Namespace: set the variable yourself (gh missing, unauthenticated, or no remote):"
-    echo "  gh variable set MCP_NAMESPACE --body $ns"
-fi
-
-files="
-README.md
-CLAUDE.md
-"
-changed=""
-for f in $files; do
-    [ -f "$f" ] || continue
-    if grep -q "__MCP_NAMESPACE__" "$f" 2>/dev/null; then
-        perl -pi -e "s/__MCP_NAMESPACE__/$ns/g" "$f"
-        changed="$changed $f"
+if [ -z "$already" ]; then
+    other="aws"; [ "$target" = "aws" ] && other="k8s"
+    echo
+    echo "Keeping '$target', removing '$other':"
+    ./scripts/prune-target "$other"
+    # The dependency groups moved, so the lockfile no longer matches the
+    # project. Every image build runs `uv sync --frozen` and would fail on that.
+    if command -v uv >/dev/null 2>&1; then
+        uv lock >/dev/null
+        uv sync >/dev/null
+        echo "  re-locked (uv lock && uv sync)"
+    else
+        echo "  uv not found — run 'uv lock && uv sync' before you push," >&2
+        echo "  or --frozen builds will fail on a stale lockfile." >&2
     fi
-done
-if [ -n "$changed" ]; then
-    echo "Docs: substituted __MCP_NAMESPACE__ ->$ns in$changed"
+    echo
 fi
 
-# --- 2. Example toolsets -------------------------------------------------
+# --- 2. Where it deploys -------------------------------------------------
+if [ "$target" = "k8s" ]; then
+    if [ -z "$name" ]; then
+        printf "Kubernetes namespace for this deployment [%s]: " "$DEFAULT_NAME"
+        read -r name || true
+        name="${name:-$DEFAULT_NAME}"
+    fi
+    kebab "$name" "namespace"
+
+    # The namespace has two homes:
+    #   1. the MCP_NAMESPACE repo Actions variable, which the deploy workflow
+    #      reads — kept out of committed files so it never copies into
+    #      generated repos; and
+    #   2. the __MCP_NAMESPACE__ placeholder in the docs' manual cluster-setup
+    #      commands, substituted here so those commands are copy-pasteable.
+    # Deploys need the variable *and* the KUBE_CONFIG secret (see closing notes).
+    set_variable MCP_NAMESPACE "$name"
+
+    changed=""
+    for f in README.md CLAUDE.md; do
+        [ -f "$f" ] || continue
+        if grep -q "__MCP_NAMESPACE__" "$f" 2>/dev/null; then
+            perl -pi -e "s/__MCP_NAMESPACE__/$name/g" "$f"
+            changed="$changed $f"
+        fi
+    done
+    if [ -n "$changed" ]; then
+        echo "Docs: substituted __MCP_NAMESPACE__ ->$name in$changed"
+    fi
+else
+    if [ -z "$name" ]; then
+        printf "Stack name for this instance [%s]: " "$DEFAULT_NAME"
+        read -r name || true
+        name="${name:-$DEFAULT_NAME}"
+    fi
+    kebab "$name" "stack name"
+
+    if [ -z "$region" ]; then
+        printf "AWS region to deploy into (e.g. eu-west-2): "
+        read -r region || true
+    fi
+    kebab "$region" "region"
+
+    set_variable MCP_AWS_INSTANCE "$name"
+    set_variable MCP_AWS_REGION "$region"
+fi
+
+# --- 3. Example toolsets -------------------------------------------------
 remove_one() {
     if command -v uv >/dev/null 2>&1; then
         ./scripts/remove-toolset "$1"
@@ -105,9 +214,10 @@ for t in $EXAMPLES; do
     esac
 done
 
-cat <<EOF
+if [ "$target" = "k8s" ]; then
+    cat <<EOF
 
-Bootstrapped to namespace '$ns'. Next steps:
+Bootstrapped to namespace '$name'. Next steps:
 
   1. Add your first toolset:        uv run mcp-toolset new my-toolset
   2. Develop locally:               uv sync && ./scripts/test
@@ -118,6 +228,25 @@ Bootstrapped to namespace '$ns'. Next steps:
      both it and KUBE_CONFIG exist — until then CI is green but deploys skip:
         gh secret set KUBE_CONFIG < your.kubeconfig
         gh secret set MCP_INGRESS_HOST --body <hostname>   # optional shared domain
-  4. Commit the result (if any examples were removed):
-        git add -A && git commit -m "Bootstrap template for $ns"
+  4. Commit the result:
+        git add -A && git commit -m "Bootstrap template for $name"
 EOF
+else
+    cat <<EOF
+
+Bootstrapped to stack '$name' in $region. Next steps:
+
+  1. Add your first toolset:        uv run mcp-toolset new my-toolset
+  2. Develop locally:               uv sync && ./scripts/test
+                                     TOOLSET=hello uv run mcp-serve   # if kept
+                                     uv run mcp-cli call hello name=dev
+  3. When you have an account, bootstrap the CDK toolkit and deploy the setup
+     stack (see README > AWS: ECS on Fargate), then set the role it creates.
+     The variables are already set; deploys run once the secret exists too —
+     until then CI is green but deploys skip:
+        gh secret set MCP_AWS_ROLE --body <deploy-role-arn>
+        gh secret set MCP_AWS_INGRESS_HOST --body <hostname>   # optional domain
+  4. Commit the result:
+        git add -A && git commit -m "Bootstrap template for $name"
+EOF
+fi
