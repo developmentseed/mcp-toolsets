@@ -1,6 +1,9 @@
 # One Dockerfile, two products, both selected by --build-arg TOOLSET:
-#   TOOLSET=<name>   a toolsets/<name> service       (CMD mcp-serve)
-#   TOOLSET=index    the directory of all toolsets   (chart overrides: mcp-index)
+#   TOOLSET=<name>     a toolsets/<name> service     (CMD mcp-serve)
+#   TOOLSET=index      the directory of all toolsets (command: mcp-index)
+#   TOOLSET=index-aws  the same, for the AWS target — it discovers toolsets
+#                      through the ECS and Cloud Map APIs, so it needs the
+#                      runtime's [aws] extra that a cluster deployment does not
 # Both run code from the mcp-toolsets-runtime package; nothing in this repo is
 # the runtime.
 #
@@ -34,12 +37,15 @@ WORKDIR /app
 COPY . .
 COPY --from=ui /out/ ./
 # The index serves no toolset — it only needs the runtime, which the `index`
-# dependency group pins to the same locked version every toolset image gets.
-RUN if [ "${TOOLSET}" = "index" ]; then \
-        uv sync --frozen --no-dev --no-editable --only-group index; \
-    else \
-        uv sync --frozen --no-dev --no-editable --package "${TOOLSET}"; \
-    fi
+# dependency groups pin to the same locked version every toolset image gets.
+# Both index sentinels name a group rather than a toolset, so `--only-group`
+# takes the name straight from the build arg.
+RUN case "${TOOLSET}" in \
+      index | index-aws) \
+        uv sync --frozen --no-dev --no-editable --only-group "${TOOLSET}" ;; \
+      *) \
+        uv sync --frozen --no-dev --no-editable --package "${TOOLSET}" ;; \
+    esac
 
 FROM python:3.12-slim-bookworm
 ARG TOOLSET

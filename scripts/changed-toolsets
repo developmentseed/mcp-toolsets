@@ -3,8 +3,9 @@
 #
 # Usage: scripts/changed-toolsets <before>..<after>
 #
-# Changes to shared build inputs (charts/, Dockerfile, uv.lock, root
-# pyproject.toml) are baked into every image, so they select ALL toolsets.
+# Changes to shared build inputs (infra/, Dockerfile, uv.lock, root
+# pyproject.toml) are baked into every image or redeploy every service, so they
+# select ALL toolsets. infra/ covers both targets: the charts and the CDK app.
 # uv.lock covers a runtime upgrade: the runtime is a pinned dependency now, so
 # bumping it lands there rather than in any tracked source directory.
 # Otherwise only the changed toolsets/<name> directories are selected. An
@@ -27,7 +28,7 @@ if [ -z "$range" ] || ! changed=$(git diff --name-only "$range" 2>/dev/null); th
     exit 0
 fi
 
-if echo "$changed" | grep -qE '^(charts/|Dockerfile|uv\.lock|pyproject\.toml)'; then
+if echo "$changed" | grep -qE '^(infra/|Dockerfile|uv\.lock|pyproject\.toml)'; then
     all_toolsets | json_array
 else
     echo "$changed" | grep '^toolsets/' | cut -d/ -f2 | json_array

@@ -20,15 +20,64 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: >
-          helm lint charts/mcp-toolset
+          helm lint infra/k8s/charts/mcp-toolset
           --set name=test
           --set image.repository=test
           --set image.tag=test
       - run: >
-          helm lint charts/mcp-index
+          helm lint infra/k8s/charts/mcp-index
           --set ingress.host=test.example.com
           --set image.repository=test
           --set image.tag=test
+
+  # The AWS target's counterpart to `helm lint`: synthesise the stack from this
+  # repo alone. It takes identifiers rather than looking anything up, so a pull
+  # request checks it with no account attached.
+  synth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      # aws-cdk-lib is a Python package with a JavaScript engine underneath, so
+      # even a pure-Python synthesis needs node.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - run: uv sync --frozen --group infra
+      - name: Synthesise every shape the stack is deployed in
+        run: |
+          tags=$(ls toolsets | jq -R . | jq -sc 'map({(.): "ci"}) | add + {"index-aws": "ci", chat: "ci"}')
+          base="-c imagePrefix=ghcr.io/example/repo -c imageTags=$tags"
+          # Each shape into its own directory, so the check below sees all four
+          # rather than only whichever ran last.
+          synth() {
+            name=$1; shift
+            CDK_OUTDIR="cdk.out/$name" uv run --group infra python -m infra.cdk.app "$@"
+            # A lookup leaves an entry here and sends the CLI to an account to
+            # fill it in — which is exactly what this target must never need.
+            missing=$(jq -c '.missing // []' "cdk.out/$name/manifest.json")
+            if [ "$missing" != "[]" ]; then
+              echo "$name: synthesis reached for an account: $missing" >&2
+              exit 1
+            fi
+            echo "$name: ok"
+          }
+          # No domain: plain HTTP on the load balancer's own name.
+          synth plain -c instance=ci $base
+          # Managed DNS: the stack issues the certificate and writes records.
+          synth managed -c instance=ci $base \
+            -c host=mcp.example.com -c hostedZoneId=Z0123456789ABC
+          # Bring your own: a certificate in, no DNS written.
+          synth byo -c instance=ci $base -c host=mcp.example.com \
+            -c certificateArn=arn:aws:acm:eu-west-1:111122223333:certificate/abc
+          # The one-time setup stack.
+          synth setup -c instance=ci -c setupOnly=true -c repository="$GITHUB_REPOSITORY"
+      # The stack's own tests live here rather than in the `test` job: they
+      # import aws-cdk-lib, which needs node, and a contributor with no
+      # interest in AWS should not need a JavaScript runtime to run the
+      # toolset tests.
+      - name: Test the stack
+        run: uv run --group infra pytest infra -q
 
   ui:
     runs-on: ubuntu-latest
@@ -53,6 +102,35 @@ jobs:
             TOOLSET="$name" uv run python -c \
               "import os; from mcp_runtime.server import build_server; build_server(os.environ['TOOLSET'])"
           done
+
+  # The index and chat images are built by the deploy workflows and by nothing
+  # else, so a change to the Dockerfile's index branch, to Dockerfile.chat, or
+  # to either dependency group used to be validated only after merge — which is
+  # how an index image shipped without the SDK it discovers with. Fixed names
+  # rather than a matrix over toolsets, so these can be required checks.
+  shared-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # One dimension on purpose: a check's name carries every matrix value, so
+      # `image: [...]` alone gives `shared-images (index)` — a name a required
+      # check can be pinned to, and one that survives changing how it is built.
+      matrix:
+        image: [index, index-aws, chat]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Build the image (no push)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          # The chat has its own Dockerfile and takes no build arg; both index
+          # variants are the shared one with the sentinel naming their group.
+          file: ${{ matrix.image == 'chat' && 'Dockerfile.chat' || 'Dockerfile' }}
+          push: false
+          build-args: ${{ matrix.image == 'chat' && '' || format('TOOLSET={0}', matrix.image) }}
+          cache-from: type=gha,scope=mcp-${{ matrix.image }}
+          cache-to: type=gha,scope=mcp-${{ matrix.image }},mode=max
 
   detect:
     runs-on: ubuntu-latest

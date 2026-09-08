@@ -1,2 +1,17 @@
-# Optional Helm values overrides for this toolset (see charts/mcp-toolset/values.yaml).
+# Optional Helm values overrides for this toolset. Every key the chart accepts
+# is documented in infra/k8s/charts/mcp-toolset/values.yaml; these are the ones
+# a toolset usually sets.
+#
+#   secrets:   existing Secret names, every key exposed to the pod via envFrom
+#   env:       plain environment variables
+#   resources: requests and limits
+#   replicas:  how many pods
+#
+# secrets:
+#   - stac-explorer-credentials
+# env:
+#   - name: EXAMPLE_URL
+#     value: https://example.org
+# resources:
+#   requests: { cpu: 100m, memory: 256Mi }
 {}

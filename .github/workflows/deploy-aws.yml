@@ -1,0 +1,218 @@
+name: Deploy (AWS)
+
+on:
+  push:
+    branches: [main]
+  # Manual full deploy (e.g. after fixing the workflow itself, which isn't a
+  # path changed-toolsets rebuilds for).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  # The whole reason there is no access key anywhere: the run mints its own
+  # short-lived token and trades it for the deploy role.
+  id-token: write
+
+env:
+  # Per-instance config, supplied as repo Actions variables so they never copy
+  # into repos generated from this template. Empty until set, which (with the
+  # role) gates every job that touches an account.
+  #
+  # Every input this workflow reads is MCP_AWS_*, including the ones whose
+  # Kubernetes counterparts are spelled without it. While a repo carries both
+  # targets — as the template does — a shared name would point this deploy at
+  # the cluster's hostname, which resolves, answers and is the wrong place.
+  MCP_AWS_INSTANCE: ${{ vars.MCP_AWS_INSTANCE }}
+  MCP_AWS_REGION: ${{ vars.MCP_AWS_REGION }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      toolsets: ${{ steps.changed.outputs.toolsets }}
+      deploy: ${{ steps.deploy.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            range=""  # unusable range => changed-toolsets selects all
+          else
+            range="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          echo "toolsets=$(./scripts/changed-toolsets "$range")" >> "$GITHUB_OUTPUT"
+      # A fresh template instance has no AWS account behind it, so skip every
+      # job that touches one — CI stays green until the role, the region and
+      # the instance name are all configured. Same shape as the Kubernetes
+      # workflow's guard, so neither target fails a repo that chose the other.
+      - id: deploy
+        env:
+          MCP_AWS_ROLE: ${{ secrets.MCP_AWS_ROLE }}
+        run: |
+          enabled=""
+          if [ -n "$MCP_AWS_ROLE" ] && [ -n "$MCP_AWS_INSTANCE" ] && [ -n "$MCP_AWS_REGION" ]; then
+            enabled="true"
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
+  # Not behind the deploy guard: building an image needs no AWS account, and
+  # publishing them regardless is what lets someone deploy by hand — or wire up
+  # the account later — without building anything themselves.
+  #
+  # While both targets live in this repo, the toolset and chat images are built
+  # here and by deploy.yml — same context, same build arg, same tag, so the
+  # second push is a no-op on identical content. An instance that prunes a
+  # target at bootstrap keeps one workflow and the duplication goes with it.
+  images:
+    needs: detect
+    if: needs.detect.outputs.toolsets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolset: ${{ fromJSON(needs.detect.outputs.toolsets) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: image
+        name: Compute image name (ghcr requires lowercase)
+        run: echo "repository=ghcr.io/${GITHUB_REPOSITORY@L}/mcp-${{ matrix.toolset }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: true
+          build-args: TOOLSET=${{ matrix.toolset }}
+          tags: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=mcp-${{ matrix.toolset }}
+          cache-to: type=gha,scope=mcp-${{ matrix.toolset }},mode=max
+
+  # The index and the chat are built from shared code, so any change that
+  # selects a toolset selects them too.
+  shared-images:
+    needs: detect
+    if: needs.detect.outputs.toolsets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The AWS index needs the runtime's [aws] extra to discover anything,
+          # so it is a different build arg from the cluster's — same image name,
+          # because the stack asks for `index`.
+          - component: index-aws
+            build_arg: TOOLSET=index-aws
+            file: Dockerfile
+          - component: chat
+            build_arg: ""
+            file: Dockerfile.chat
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: image
+        run: echo "repository=ghcr.io/${GITHUB_REPOSITORY@L}/mcp-${{ matrix.component }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: true
+          build-args: ${{ matrix.build_arg }}
+          tags: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=mcp-${{ matrix.component }}
+          cache-to: type=gha,scope=mcp-${{ matrix.component }},mode=max
+
+  # One stack, so one deploy job — and a concurrency group, because two pushes
+  # in quick succession would otherwise race on the same stack and the second
+  # would be rejected mid-update.
+  deploy:
+    needs: [detect, images, shared-images]
+    if: needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: aws-deploy-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      # aws-cdk-lib is a Python package with a JavaScript engine underneath, so
+      # synthesis needs node even though nothing here is written in it.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - run: uv sync --frozen --group infra
+      - uses: aws-actions/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d181db # v4
+        with:
+          role-to-assume: ${{ secrets.MCP_AWS_ROLE }}
+          aws-region: ${{ env.MCP_AWS_REGION }}
+
+      # A stack has no memory of the tag a service is running, so it must be
+      # told one for every service — including the ones this push did not
+      # touch. Parameter Store holds them between deploys: read them all, put
+      # back the ones just built, and hand the whole map to the synthesis.
+      - id: tags
+        name: Resolve the image tag for every component
+        env:
+          BUILT: ${{ needs.detect.outputs.toolsets }}
+        run: |
+          prefix="/mcp-toolsets/${MCP_AWS_INSTANCE}"
+          tags=$(aws ssm get-parameters-by-path --path "$prefix" --recursive \
+            --query 'Parameters[].{name:Name,value:Value}' --output json \
+            | jq '[.[] | select(.name | endswith("/image-tag"))
+                       | {(.name | split("/")[-2]): .value}] | add // {}')
+          built=$(jq -c --arg sha "${{ github.sha }}" \
+            '. + ["index-aws","chat"] | map({(.): $sha}) | add' <<<"$BUILT")
+          jq -c -n --argjson current "$tags" --argjson built "$built" \
+            '$current * $built' > image-tags.json
+          echo "file=image-tags.json" >> "$GITHUB_OUTPUT"
+          cat image-tags.json
+
+      - name: Deploy the stack
+        env:
+          MCP_AWS_INGRESS_HOST: ${{ secrets.MCP_AWS_INGRESS_HOST }}
+          MCP_AWS_CHAT_HOST: ${{ secrets.MCP_AWS_CHAT_HOST }}
+          MCP_AWS_HOSTED_ZONE_ID: ${{ secrets.MCP_AWS_HOSTED_ZONE_ID }}
+          MCP_AWS_CERTIFICATE_ARN: ${{ secrets.MCP_AWS_CERTIFICATE_ARN }}
+          MCP_AWS_REGISTRY_SECRET_ARN: ${{ secrets.MCP_AWS_REGISTRY_SECRET_ARN }}
+          MCP_AWS_VPC_ID: ${{ secrets.MCP_AWS_VPC_ID }}
+          MCP_AWS_SUBNET_IDS: ${{ secrets.MCP_AWS_SUBNET_IDS }}
+          MCP_AWS_AVAILABILITY_ZONES: ${{ secrets.MCP_AWS_AVAILABILITY_ZONES }}
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY@L}"
+          npx --yes aws-cdk@2 deploy "$MCP_AWS_INSTANCE" \
+            --app "uv run --group infra python -m infra.cdk.app" \
+            --require-approval never \
+            -c instance="$MCP_AWS_INSTANCE" \
+            -c imagePrefix="$repository" \
+            -c imageTags="$(cat ${{ steps.tags.outputs.file }})" \
+            ${MCP_AWS_INGRESS_HOST:+-c host="$MCP_AWS_INGRESS_HOST"} \
+            ${MCP_AWS_CHAT_HOST:+-c chatHost="$MCP_AWS_CHAT_HOST"} \
+            ${MCP_AWS_HOSTED_ZONE_ID:+-c hostedZoneId="$MCP_AWS_HOSTED_ZONE_ID"} \
+            ${MCP_AWS_CERTIFICATE_ARN:+-c certificateArn="$MCP_AWS_CERTIFICATE_ARN"} \
+            ${MCP_AWS_REGISTRY_SECRET_ARN:+-c registrySecretArn="$MCP_AWS_REGISTRY_SECRET_ARN"} \
+            ${MCP_AWS_VPC_ID:+-c vpcId="$MCP_AWS_VPC_ID"} \
+            ${MCP_AWS_SUBNET_IDS:+-c subnetIds="$MCP_AWS_SUBNET_IDS"} \
+            ${MCP_AWS_AVAILABILITY_ZONES:+-c availabilityZones="$MCP_AWS_AVAILABILITY_ZONES"}
+
+      # Only after the stack accepted them: a tag written before a failed
+      # deploy would claim a service is on an image it never ran.
+      - name: Record the tags the stack is now on
+        run: |
+          prefix="/mcp-toolsets/${MCP_AWS_INSTANCE}"
+          jq -r 'to_entries[] | "\(.key) \(.value)"' image-tags.json |
+          while read -r component tag; do
+            aws ssm put-parameter --name "$prefix/$component/image-tag" \
+              --type String --value "$tag" --overwrite >/dev/null
+            echo "$component -> $tag"
+          done

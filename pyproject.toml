@@ -10,7 +10,7 @@ dependencies = [
     # [web] is here for the dev environment, which runs `mcp-agent-web` and
     # `mcp-agent install-elements`; the toolset images sync with `--package` and
     # so never see it. Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.2",
+    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.3",
     "credential-demo",
     "hello",
     "stac-explorer",
@@ -21,15 +21,40 @@ dependencies = [
 # none of the toolsets. `uv sync --only-group index` in the Dockerfile installs
 # exactly this, at the version uv.lock already pins for everything else.
 index = ["mcp-toolsets-runtime"]
+# The same directory, for the AWS target. It discovers toolsets through the ECS
+# and Cloud Map APIs, which is the runtime's [aws] extra — a separate group so a
+# cluster deployment's image does not carry an AWS SDK it never calls.
+index-aws = ["mcp-toolsets-runtime[aws]"]
 # Likewise for the hosted chat image (Dockerfile.chat): the agent and its
 # Chainlit stack, no toolsets. [web] rather than [agent] since 0.5.0 — the
 # runtime split the Chainlit host out so an API deployment need not install it.
 chat = ["mcp-toolsets-runtime[web]"]
+# The AWS deployment target: the CDK app under infra/. A group rather than a
+# dependency so the k8s path never installs it, and so bootstrap can drop the
+# group with the directory. `uv run --group infra` is how anything here runs.
+infra = [
+    "aws-cdk-lib<3.0.0,>=2.268.0",
+    "constructs<11.0.0,>=10.8.1",
+    # infra.config reads each toolset's toolset.aws.yaml.
+    "pyyaml<7.0.0,>=6.0.3",
+    "types-pyyaml<7.0.0,>=6.0.12.20260815",
+]
 dev = [
     "pytest<10.0.0,>=9.0.3",
     "pytest-asyncio<2.0.0,>=1.4.0",
     "ruff<0.15.0,>=0.14.11",
     "mypy<2.0.0,>=1.19.1",
+]
+
+# What `mcp-toolset new` writes into a new toolset for each deployment target.
+# Declared here rather than guessed from directory names: these files name this
+# repo's own paths, so the templates live beside the things that read them —
+# the chart values, and the stack. Bootstrap drops the entry for the target it
+# prunes.
+[tool.mcp-toolset]
+deployment-config = [
+    { path = "toolset.yaml", template = "infra/k8s/toolset.template.yaml" },
+    { path = "toolset.aws.yaml", template = "infra/cdk/toolset.template.yaml" },
 ]
 
 [tool.uv]

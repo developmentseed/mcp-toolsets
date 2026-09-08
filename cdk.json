@@ -1,0 +1,4 @@
+{
+  "app": "uv run --group infra python -m infra.cdk.app",
+  "watch": { "exclude": ["**"] }
+}
