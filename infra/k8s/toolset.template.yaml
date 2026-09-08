@@ -8,7 +8,7 @@
 #   replicas:  how many pods
 #
 # secrets:
-#   - credential-demo-credentials
+#   - __NAME__-credentials
 # env:
 #   - name: EXAMPLE_URL
 #     value: https://example.org

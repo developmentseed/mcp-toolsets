@@ -1,0 +1,13 @@
+# Optional deployment overrides for this toolset, read by the stack in
+# infra/cdk.
+#
+#   size:    a Fargate cpu/memory combination; omit for the smallest
+#   env:     plain environment variables
+#   secrets: environment variables read from Parameter Store, one path each
+#
+# size: { cpu: 256, memory: 512 }
+# env:
+#   EXAMPLE_URL: https://example.org
+# secrets:
+#   API_TOKEN: /mcp-toolsets/<instance>/credential-demo/api-token
+{}

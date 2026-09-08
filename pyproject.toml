@@ -10,7 +10,7 @@ dependencies = [
     # [web] is here for the dev environment, which runs `mcp-agent-web` and
     # `mcp-agent install-elements`; the toolset images sync with `--package` and
     # so never see it. Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.2",
+    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.3",
     "credential-demo",
     "hello",
     "stac-explorer",
@@ -44,6 +44,17 @@ dev = [
     "pytest-asyncio<2.0.0,>=1.4.0",
     "ruff<0.15.0,>=0.14.11",
     "mypy<2.0.0,>=1.19.1",
+]
+
+# What `mcp-toolset new` writes into a new toolset for each deployment target.
+# Declared here rather than guessed from directory names: these files name this
+# repo's own paths, so the templates live beside the things that read them —
+# the chart values, and the stack. Bootstrap drops the entry for the target it
+# prunes.
+[tool.mcp-toolset]
+deployment-config = [
+    { path = "toolset.yaml", template = "infra/k8s/toolset.template.yaml" },
+    { path = "toolset.aws.yaml", template = "infra/cdk/toolset.template.yaml" },
 ]
 
 [tool.uv]
