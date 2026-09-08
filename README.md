@@ -2,9 +2,23 @@
 
 A template monorepo of **toolsets** — small packages of
 [LangChain](https://python.langchain.com) tools — each auto-deployed as its own
-[MCP](https://modelcontextprotocol.io) service on Kubernetes. Toolset
-implementors write a single Python module; a shared runtime, one parameterized
-Dockerfile and one generic Helm chart handle everything else.
+[MCP](https://modelcontextprotocol.io) service. Toolset implementors write a
+single Python module; a shared runtime, one parameterized Dockerfile and one
+deployment target handle everything else.
+
+It deploys to:
+
+  <!-- target:k8s -->
+- **Kubernetes** — one generic Helm chart, a release per toolset.
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+- **AWS, without EKS** — ECS on Fargate, one CDK stack for the instance.
+  <!-- /target:aws -->
+<!-- target:both -->
+
+Both are here. `./scripts/bootstrap` keeps whichever you choose and removes the
+other, so an instance carries one deployment story rather than two.
+<!-- /target:both -->
 
 The runtime is not in this repo. It is
 [**mcp-toolsets-runtime**](https://github.com/developmentseed/mcp-toolsets-runtime),
@@ -13,10 +27,18 @@ worked example of consuming it: what a toolset exports, how views are built and
 served, and how the whole thing deploys. See
 [The runtime dependency](#the-runtime-dependency).
 
+<!-- target:k8s -->
 ```
 toolsets/<name>/tools.py  ──▶  ghcr.io/<owner>/<repo>/mcp-<name>  ──▶  k8s Service mcp-<name>
    (LangChain @tool fns)        (Dockerfile --build-arg TOOLSET=...)     (infra/k8s/charts)
 ```
+<!-- /target:k8s -->
+<!-- target:aws -->
+```
+toolsets/<name>/tools.py  ──▶  ghcr.io/<owner>/<repo>/mcp-<name>  ──▶  Fargate service mcp-<name>
+   (LangChain @tool fns)        (Dockerfile --build-arg TOOLSET=...)     (infra/cdk)
+```
+<!-- /target:aws -->
 
 Terminology: a **tool** is a single LangChain `@tool` function; a **toolset**
 is a directory under `toolsets/` exporting a `TOOLS` list, deployed as one MCP
@@ -26,38 +48,71 @@ server.
 
 This repository is a GitHub template — click **Use this template** to create
 your own. The image registry path is derived from your repo name automatically;
-the only thing to set is the Kubernetes namespace:
+what you set is where the toolsets deploy:
 
 1. **Bootstrap once — do this first.** `./scripts/bootstrap` is the intended
-   first step after creating your repo. It does three things:
+   first step after creating your repo. It:
 
+   <!-- target:both -->
+   - asks for the **deployment target**, Kubernetes or AWS, and removes the
+     other one — its workflow, its directory under `infra/`, its dependency
+     groups, its config file in every toolset, and its half of these docs. That
+     is a change to the working tree for you to commit, not a setting;
+   <!-- /target:both -->
+   <!-- target:k8s -->
    - sets the **`MCP_NAMESPACE`** repo Actions variable (the namespace your
      toolsets deploy into) via `gh` — **deploys are skipped until this is set**;
    - **rewrites the `__MCP_NAMESPACE__` placeholders** in `README.md` and
      `CLAUDE.md` in place, so the cluster-setup commands below become
      copy-pasteable for your namespace;
+   <!-- /target:k8s -->
+   <!-- target:aws -->
+   - sets the **`MCP_AWS_INSTANCE`** and **`MCP_AWS_REGION`** repo Actions
+     variables (the stack's name, and the region it deploys into) via `gh` —
+     **deploys are skipped until both of those and the `MCP_AWS_ROLE` secret
+     are set**;
+   <!-- /target:aws -->
    - optionally removes the shipped example toolsets.
 
+   <!-- target:k8s -->
    ```sh
-   ./scripts/bootstrap            # prompts for a namespace + which examples to keep
+   ./scripts/bootstrap            # prompts for everything it needs
    # or non-interactively:
-   ./scripts/bootstrap my-namespace --keep-examples
+   ./scripts/bootstrap --target k8s my-namespace --keep-examples
    ```
+   <!-- /target:k8s -->
+   <!-- target:aws -->
+   ```sh
+   ./scripts/bootstrap            # prompts for everything it needs
+   # or non-interactively:
+   ./scripts/bootstrap --target aws my-instance --region eu-west-2 --keep-examples
+   ```
+   <!-- /target:aws -->
 
-   Re-running is safe. The namespace lives only in the repo variable, not a
-   committed file, so it never carries over to repos generated from your
-   instance. If `gh` isn't set up when you bootstrap, the script prints the one
-   command to set the variable yourself
-   (`gh variable set MCP_NAMESPACE --body <namespace>`); the `__MCP_NAMESPACE__`
-   placeholders then stay literal until you re-run bootstrap or edit them by hand.
+   Re-running is safe, and refuses to prune a target you are already on. The
+   deploy settings live only in repo variables, not committed files, so they
+   never carry over to repos generated from your instance. If `gh` isn't set up
+   when you bootstrap, the script prints the commands to set them yourself.
+   <!-- target:k8s -->
+   The `__MCP_NAMESPACE__` placeholders then stay literal until you re-run
+   bootstrap or edit them by hand.
+   <!-- /target:k8s -->
 
 2. **Develop** — `uv sync`, then add a toolset (`uv run mcp-toolset new`) or play
    with the shipped `hello` example (see [Quickstart](#quickstart)).
 
+   <!-- target:k8s -->
 3. **Deploy when ready** — set the `KUBE_CONFIG` secret (see
    [Kubernetes cluster setup](#kubernetes-cluster-setup)). Until you do, CI runs
    lint/tests/build on every push but **skips the deploy** — a fresh instance is
    green out of the box, with no cluster required.
+   <!-- /target:k8s -->
+   <!-- target:aws -->
+3. **Deploy when ready** — run the setup stack and set the `MCP_AWS_ROLE` secret
+   (see [AWS: ECS on Fargate](#aws-ecs-on-fargate-without-eks)). Until you do,
+   CI runs lint/tests/synth on every push but **skips the deploy** — a fresh
+   instance is green out of the box, with no AWS account required.
+   <!-- /target:aws -->
 
 The repo ships two example toolsets you can keep, copy or delete: `hello` (the
 smallest thing that deploys) and `credential-demo` (the
@@ -89,8 +144,8 @@ Fix runtime behaviour upstream and release it — never patch it here, since
 nothing local would survive the next `uv sync`.
 
 This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
-service — `infra/*` (the Helm charts under `k8s`, the CDK app under `cdk`), the
-`Dockerfile`, the workflows, and `tests/test_contract.py`.
+service — `infra/*` (the deployment target's own code), the `Dockerfile`, the
+workflows, and `tests/test_contract.py`.
 
 ### Session state, and what tagging `NotAuthored` adds
 
@@ -229,9 +284,17 @@ tools and merge.
 3. Add tests in `toolsets/my-toolset/tests/test_my_toolset.py` and run
    `./scripts/test`.
 
+   <!-- target:k8s -->
 4. (Optional) `toolsets/my-toolset/toolset.yaml` holds Helm value overrides —
    secrets to mount via `envFrom`, env vars, resources, replicas. See
    `infra/k8s/charts/mcp-toolset/values.yaml` for the available keys.
+   <!-- /target:k8s -->
+   <!-- target:aws -->
+4. (Optional) `toolsets/my-toolset/toolset.aws.yaml` holds the service's
+   overrides — task size, env vars, and secrets named one Parameter Store path
+   at a time. See
+   [Per-toolset configuration](#per-toolset-configuration).
+   <!-- /target:aws -->
 
 5. Merge to `main`. CI builds `ghcr.io/<owner>/<repo>/mcp-my-toolset` and
    deploys the `mcp-my-toolset` service automatically.
@@ -382,23 +445,44 @@ without it but warns and won't render views.
 ./scripts/remove-toolset my-toolset
 ```
 
-Merge to `main`. Removal is GitOps like everything else: the deploy
-workflow reconciles the cluster against `toolsets/`, uninstalling any
-`mcp-<name>` release whose directory no longer exists — Deployment, Service
-and Ingress with it; the index drops the entry automatically. Mind that
-this means merging a deleted directory tears down the live service.
+Merge to `main`. Removal is GitOps like everything else: the deploy reconciles
+what is running against `toolsets/`, and the index drops the entry
+automatically. Mind that this means merging a deleted directory tears down the
+live service.
+
+<!-- target:k8s -->
+The workflow uninstalls any `mcp-<name>` release whose directory no longer
+exists — Deployment, Service and Ingress with it.
 
 Not removed automatically: out-of-band Secrets the toolset listed in its
 `toolset.yaml` (`kubectl -n __MCP_NAMESPACE__ delete secret <name>`) and its
 images in GHCR (delete the package from the repo settings if you care).
+<!-- /target:k8s -->
+<!-- target:aws -->
+The stack stops synthesising that service, so the next deploy takes it away
+along with its listener rule and its Cloud Map registration.
+
+Not removed automatically: Parameter Store values the toolset listed in its
+`toolset.aws.yaml` (`aws ssm delete-parameter --name <path>`), its image-tag
+parameter under `/mcp-toolsets/<instance>/<name>/`, and its images in GHCR
+(delete the package from the repo settings if you care).
+<!-- /target:aws -->
 
 ## Deployment
 
-- **ci.yml** (PRs + main): lint, tests, `helm lint`, `cdk synth` of every shape
-  the stack deploys in, and a no-push Docker build of each image the change
-  affects — the toolsets it selects, plus the index (both variants) and the
-  chat, which no toolset change selects but every shared input rebuilds.
-  Always runs — no cluster and no AWS account needed.
+- **ci.yml** (PRs + main): lint, tests, a check of the deployment target, and a
+  no-push Docker build of each image the change affects — the toolsets it
+  selects, plus the index and the chat, which no toolset change selects but
+  every shared input rebuilds. Always runs, against nothing deployed.
+  <!-- target:k8s -->
+  The target's own check is `helm lint` over both charts.
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+  The target's own check is a `cdk synth` of every shape the stack deploys in,
+  and the stack's tests. Synthesis reaches for no account, which is what lets a
+  pull request check the infrastructure with no credentials attached.
+  <!-- /target:aws -->
+  <!-- target:k8s -->
 - **deploy.yml** (main): detects changed toolsets (`scripts/changed-toolsets`)
   — changes to shared build inputs (`infra/`, `Dockerfile`, `uv.lock`, root
   `pyproject.toml`) rebuild *all* toolsets, which is how a runtime version bump
@@ -430,13 +514,42 @@ kubectl -n __MCP_NAMESPACE__ port-forward svc/mcp-hello 8000:8000
 uv run mcp-cli list
 ```
 
-Build an image locally with `docker build --build-arg TOOLSET=hello .`.
-
 - **Optional secret**: `MCP_CHAT_HOST` — a hostname for the hosted chat UI (see
   [Hosted chat](#hosted-chat-bring-your-own-model)). When `MCP_INGRESS_HOST` is
   set, the deploy builds `Dockerfile.chat` and installs `infra/k8s/charts/mcp-chat` on
   this host (default `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and
   a TLS cert (`<namespace>-chat-tls`, issued by cert-manager if configured).
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+- **deploy-aws.yml** (main): detects changed toolsets
+  (`scripts/changed-toolsets`) — changes to shared build inputs (`infra/`,
+  `Dockerfile`, `uv.lock`, root `pyproject.toml`) rebuild *all* toolsets, which
+  is how a runtime version bump reaches every service — builds and pushes
+  `ghcr.io/<owner>/<repo>/mcp-<name>:<sha>` for each, then deploys the whole
+  instance as a single stack. A toolset whose directory is gone loses its
+  service on that same deploy — see [Removing a toolset](#removing-a-toolset).
+- **Deploy guard**: the account-touching job is skipped unless the
+  `MCP_AWS_ROLE` secret and the `MCP_AWS_INSTANCE` and `MCP_AWS_REGION`
+  variables are all set, so a freshly instantiated template never fails CI
+  trying to reach an account that doesn't exist yet.
+- **Required secret**: `MCP_AWS_ROLE` — the role the run assumes through OIDC.
+  There is no access key anywhere: each run mints its own short-lived token.
+  Images push to GHCR with the built-in `GITHUB_TOKEN`.
+- **Required variables**: `MCP_AWS_INSTANCE` — the stack's name, and the prefix
+  of every Parameter Store key it reads — and `MCP_AWS_REGION`. Both are set by
+  `./scripts/bootstrap`, and as repo variables they stay per-instance, so two
+  repos sharing an account don't collide.
+- **Optional secrets**, all prefixed `MCP_AWS_` so neither target can read the
+  other's: `INGRESS_HOST` with either `HOSTED_ZONE_ID` (the stack issues the
+  certificate and writes the records) or `CERTIFICATE_ARN` (bring your own),
+  `CHAT_HOST`, `REGISTRY_SECRET_ARN` for a private registry, and
+  `VPC_ID`/`SUBNET_IDS`/`AVAILABILITY_ZONES` to deploy into a network you
+  already have. With none of them the stack answers on the load balancer's own
+  name over plain HTTP — see
+  [AWS: ECS on Fargate](#aws-ecs-on-fargate-without-eks).
+  <!-- /target:aws -->
+
+Build an image locally with `docker build --build-arg TOOLSET=hello .`.
 
 ## Hosted chat (bring your own model)
 
@@ -450,20 +563,28 @@ model spend is the user's own. The image (`Dockerfile.chat`) bundles a set of
 providers (`anthropic`, `openai`, `google-genai`, `mistralai`) so any of them
 works without a rebuild; the workspace itself stays provider-agnostic.
 
+<!-- target:k8s -->
 It deploys automatically alongside the index when `MCP_INGRESS_HOST` is set (a
-shared-code change or a `workflow_dispatch` run). There is no built-in auth —
+shared-code change or a `workflow_dispatch` run).
+<!-- /target:k8s -->
+<!-- target:aws -->
+It is a service in the stack like any other, so it deploys with everything
+else; `MCP_AWS_CHAT_HOST` gives it a hostname of its own, and the load balancer
+holds sessions to one task so a conversation survives.
+<!-- /target:aws -->
+There is no built-in auth —
 BYOM removes the shared-key abuse risk, but put an auth proxy in front (or
 enable Chainlit auth) if you need to restrict who can use it.
 
-Conversations are checkpointed per thread, **in the pod's memory by default** —
-so a restart, a redeploy or a scale-up past the chart's single replica loses
-them. That is fine for demos and is why nothing extra is deployed for it. To
+Conversations are checkpointed per thread, **in the serving process's memory by
+default** — so a restart, a redeploy or a second replica loses them. That is fine for demos and is why nothing extra is deployed for it. To
 keep conversations, point `MCP_AGENT_CHECKPOINT` at a PostgreSQL URL and add the
 runtime's `[checkpointing-postgres]` extra to the chat image. The same
 per-thread state also carries what the toolsets published, so if you do adopt
 `mcp_state`, where conversations live becomes a real decision rather than a
 detail.
 
+<!-- target:k8s -->
 ## Kubernetes cluster setup
 
 The deploy workflow assumes an existing cluster. Minimum requirements: a
@@ -627,16 +748,14 @@ with) and `CHAINLIT_PORT` also come from there. See
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
 config to edit; the index's `/` path only catches what no toolset claims.
+<!-- /target:k8s -->
 
+<!-- target:aws -->
 ## AWS: ECS on Fargate, without EKS
 
 A second deployment target, for AWS accounts that want no Kubernetes. It serves
 the same URLs, from the same images, with the same per-toolset scoping — the
-difference is what is underneath. Both targets are in this repository today;
-[#28](https://github.com/developmentseed/mcp-toolsets/issues/28) tracks the
-bootstrap-time choice that will keep whichever one you pick.
-
-`infra/cdk` is a CDK app in Python, beside the charts in `infra/k8s`. One stack per instance holds a network, an ECS
+difference is what is underneath. `infra/cdk` is a CDK app in Python. One stack per instance holds a network, an ECS
 cluster, a Fargate service per toolset directory, a load balancer with a rule
 per toolset, the index on the default rule, and the chat on a host of its own.
 Removing a toolset directory removes its service on the next deploy, which is
@@ -875,6 +994,7 @@ memory and must be told a tag for every service it synthesises. The deploy
 reads the current tags from Parameter Store, overrides the ones it just built,
 hands the whole map to the synthesis, and writes them back only after the stack
 accepts them.
+<!-- /target:aws -->
 
 ### Per-user credentials
 
@@ -934,7 +1054,7 @@ uv run mcp-cli call whoami \
   --url https://<host>/credential-demo/mcp -H "X-Demo-Token: $TOKEN"
 ```
 
-The secret rides the transport (TLS-encrypted at the ingress), never the
+The secret rides the transport (TLS-encrypted in transit), never the
 conversation, and the service stays stateless: every call carries its own
 credential, so one pod serves all users. A missing header raises a
 `MissingCredentialError` whose message tells the caller how to supply it.

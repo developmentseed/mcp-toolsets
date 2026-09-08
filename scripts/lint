@@ -4,4 +4,12 @@ set -e
 
 uv run ruff check --select S
 uv run ruff format --check
-uv run --group infra mypy tests toolsets infra
+# The AWS target's stack is the only Python under infra/, and mypy needs its
+# dependency group installed to see aws-cdk-lib. A Kubernetes repo has neither,
+# so it asks for neither — which is also what keeps this one line correct
+# whichever target bootstrap left behind.
+if [ -d infra/cdk ]; then
+    uv run --group infra mypy tests toolsets infra
+else
+    uv run mypy tests toolsets
+fi

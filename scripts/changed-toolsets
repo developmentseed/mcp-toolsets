@@ -5,7 +5,7 @@
 #
 # Changes to shared build inputs (infra/, Dockerfile, uv.lock, root
 # pyproject.toml) are baked into every image or redeploy every service, so they
-# select ALL toolsets. infra/ covers both targets: the charts and the CDK app.
+# select ALL toolsets. infra/ is the deployment target's own code.
 # uv.lock covers a runtime upgrade: the runtime is a pinned dependency now, so
 # bumping it lands there rather than in any tracked source directory.
 # Otherwise only the changed toolsets/<name> directories are selected. An

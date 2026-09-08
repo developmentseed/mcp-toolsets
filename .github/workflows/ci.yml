@@ -15,6 +15,7 @@ jobs:
       - run: ./scripts/lint
       - run: ./scripts/test
 
+  # target:k8s
   helm:
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +30,9 @@ jobs:
           --set ingress.host=test.example.com
           --set image.repository=test
           --set image.tag=test
+  # /target:k8s
 
+  # target:aws
   # The AWS target's counterpart to `helm lint`: synthesise the stack from this
   # repo alone. It takes identifiers rather than looking anything up, so a pull
   # request checks it with no account attached.
@@ -78,6 +81,7 @@ jobs:
       # toolset tests.
       - name: Test the stack
         run: uv run --group infra pytest infra -q
+  # /target:aws
 
   ui:
     runs-on: ubuntu-latest
@@ -113,10 +117,19 @@ jobs:
     strategy:
       fail-fast: false
       # One dimension on purpose: a check's name carries every matrix value, so
-      # `image: [...]` alone gives `shared-images (index)` — a name a required
+      # a bare `image:` list gives `shared-images (index)` — a name a required
       # check can be pinned to, and one that survives changing how it is built.
+      # A block list rather than a flow one so each index can be pruned with the
+      # target it belongs to.
       matrix:
-        image: [index, index-aws, chat]
+        image:
+          # target:k8s
+          - index
+          # /target:k8s
+          # target:aws
+          - index-aws
+          # /target:aws
+          - chat
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
