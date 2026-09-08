@@ -99,7 +99,7 @@ jobs:
           if [ -n "$MCP_INGRESS_HOST" ]; then
             values="$values --set ingress.enabled=true --set ingress.host=$MCP_INGRESS_HOST --set ingress.tlsSecret=${MCP_NAMESPACE}-tls"
           fi
-          helm upgrade --install "mcp-${{ matrix.toolset }}" charts/mcp-toolset \
+          helm upgrade --install "mcp-${{ matrix.toolset }}" infra/k8s/charts/mcp-toolset \
             --namespace "$MCP_NAMESPACE" \
             --set name="${{ matrix.toolset }}" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
@@ -174,7 +174,7 @@ jobs:
         env:
           MCP_INGRESS_HOST: ${{ secrets.MCP_INGRESS_HOST }}
         run: |
-          helm upgrade --install mcp-index charts/mcp-index \
+          helm upgrade --install mcp-index infra/k8s/charts/mcp-index \
             --namespace "$MCP_NAMESPACE" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
@@ -222,7 +222,7 @@ jobs:
           MCP_CHAT_HOST: ${{ secrets.MCP_CHAT_HOST }}
         run: |
           chat_host="${MCP_CHAT_HOST:-chat.$MCP_INGRESS_HOST}"
-          helm upgrade --install mcp-chat charts/mcp-chat \
+          helm upgrade --install mcp-chat infra/k8s/charts/mcp-chat \
             --namespace "$MCP_NAMESPACE" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
