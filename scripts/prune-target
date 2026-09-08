@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Remove one deployment target from this repository.
+
+This repo is the template and carries both targets, Kubernetes and AWS. An
+instance keeps one. `scripts/bootstrap` calls this once, with the target to
+drop; running it by hand is fine too, and running it twice is a no-op.
+
+Three kinds of edit, in order of how much they can surprise you:
+
+  1. Whole files and directories that belong to one target — the charts, the
+     CDK app, the deploy workflow, and each toolset's config file for that
+     target.
+  2. Blocks inside shared files, delimited by markers. A marker is a comment
+     in the host file's own syntax, so every file stays valid with both blocks
+     in place:
+
+         # target:aws          <!-- target:aws -->
+         ...                   ...
+         # /target:aws         <!-- /target:aws -->
+
+     Both marker lines go with the block. Nothing is rewritten in place, so a
+     line that mixes the two targets has to be split into two blocks first —
+     which is deliberate, since a regex that edits half a line is the kind of
+     thing that silently stops matching.
+
+     `target:both` marks a third kind: text that exists only while the choice
+     is still open, such as the sentence telling you to make it. Pruning drops
+     those too, whichever target went.
+
+     The surviving target's own markers are then removed, keeping what they
+     wrapped. A bootstrapped repo has no markers left anywhere, which is what
+     makes it an ordinary repository rather than a half-used template.
+  3. Itself, and its test. A repository that has chosen cannot choose again,
+     so the machinery is useful exactly once and a test asserting things about
+     a target that is gone is worse than no test.
+  4. Nothing else. Re-locking after the dependency groups change is the
+     caller's job, because it needs the network and this does not.
+
+Stdlib only, and no subprocesses: it runs before `uv sync` in a fresh clone.
+"""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+TARGETS = ("k8s", "aws")
+
+#: Marks text that only makes sense while both targets are present. It goes
+#: whichever one is pruned, so it is the place for anything about the choice.
+BOTH = "both"
+
+#: Paths that exist only to serve one target, deleted when it is dropped.
+#: Relative to the repo root; a directory takes its contents with it.
+PATHS = {
+    "k8s": [
+        "infra/k8s",
+        ".github/workflows/deploy.yml",
+    ],
+    "aws": [
+        "infra/cdk",
+        # `infra` is a package only so `python -m infra.cdk.app` resolves.
+        "infra/__init__.py",
+        "cdk.json",
+        ".github/workflows/deploy-aws.yml",
+    ],
+}
+
+#: The pruning machinery itself, removed last — see the module docstring.
+SELF = ["scripts/prune-target", "tests/test_prune_target.py"]
+
+#: Each toolset carries one config file per target; the dropped target's goes.
+#: Kept in step with `[tool.mcp-toolset] deployment-config` by a test.
+TOOLSET_CONFIG = {"k8s": "toolset.yaml", "aws": "toolset.aws.yaml"}
+
+#: Directories a walk never descends into: build output, caches, and the
+#: things that are not ours to edit.
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "node_modules",
+    "cdk.out",
+    "dist",
+}
+
+#: Files a walk never opens, whatever their contents. `.env` holds real
+#: credentials in a working checkout and has no business being read by this.
+SKIP_FILES = {"uv.lock", ".env"}
+
+
+def marked(target: str) -> tuple[str, str]:
+    """The opening and closing marker text for a target, comment syntax aside."""
+    return f"target:{target}", f"/target:{target}"
+
+
+def strip_blocks(text: str, target: str) -> str:
+    """Drop every `target:<name>` block, marker lines included.
+
+    Substring tests rather than a regex, so the same code reads a `#` comment
+    and an HTML one. The closing marker is tested first: it contains the
+    opening marker's text, and testing the other way round would end the file
+    inside a block that never closes.
+    """
+    opening, closing = marked(target)
+    kept, skipping = [], False
+    for line in text.splitlines(keepends=True):
+        if closing in line:
+            skipping = False
+        elif opening in line:
+            skipping = True
+        elif not skipping:
+            kept.append(line)
+    return "".join(kept)
+
+
+def unwrap_blocks(text: str, target: str) -> str:
+    """Drop a target's marker lines, keeping everything they wrapped."""
+    opening, closing = marked(target)
+    return "".join(
+        line
+        for line in text.splitlines(keepends=True)
+        if opening not in line and closing not in line
+    )
+
+
+def text_files(root: Path):
+    """Every file a marker could plausibly live in."""
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
+            continue
+        if path.name in SKIP_FILES:
+            continue
+        try:
+            path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        yield path
+
+
+def remove(path: Path) -> bool:
+    """Delete a file or a directory. True if it was there to delete."""
+    if path.is_dir():
+        for child in sorted(path.iterdir(), reverse=True):
+            remove(child)
+        path.rmdir()
+        return True
+    if path.exists() or path.is_symlink():
+        path.unlink()
+        return True
+    return False
+
+
+#: Where each target's own code lives — the presence of one of these is what
+#: says a target is still here.
+INFRA = {"k8s": "infra/k8s", "aws": "infra/cdk"}
+
+
+def remaining(root: Path) -> set[str]:
+    """The targets still present in the tree at `root`."""
+    return {t for t, path in INFRA.items() if (root / path).exists()}
+
+
+def prune(root: Path, target: str) -> list[str]:
+    """Drop `target` from the tree at `root`. Returns what changed, for the log.
+
+    Refuses to take the last one: `scripts/bootstrap` guards the choice, but
+    this is also a script someone can run twice, and the second run would
+    otherwise delete the deployment they kept.
+    """
+    if remaining(root) == {target}:
+        raise SystemExit(
+            f"refusing to prune {target}: it is the only target left here"
+        )
+
+    done = []
+
+    for relative in PATHS[target]:
+        if remove(root / relative):
+            done.append(f"removed {relative}")
+
+    config = TOOLSET_CONFIG[target]
+    toolsets = root / "toolsets"
+    if toolsets.is_dir():
+        for toolset in sorted(toolsets.iterdir()):
+            if remove(toolset / config):
+                done.append(f"removed toolsets/{toolset.name}/{config}")
+
+    kept = next(t for t in TARGETS if t != target)
+    for path in text_files(root):
+        before = path.read_text()
+        after = strip_blocks(strip_blocks(before, target), BOTH)
+        after = unwrap_blocks(after, kept)
+        if after != before:
+            path.write_text(after)
+            done.append(f"stripped {target} blocks from {path.relative_to(root)}")
+
+    for relative in SELF:
+        if remove(root / relative):
+            done.append(f"removed {relative}")
+
+    return done
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2 or argv[1] not in TARGETS:
+        print(f"usage: scripts/prune-target <{'|'.join(TARGETS)}>", file=sys.stderr)
+        print("       the target to REMOVE, not the one to keep", file=sys.stderr)
+        return 1
+
+    target = argv[1]
+    done = prune(ROOT, target)
+    if not done:
+        print(f"Nothing to prune: no trace of the {target} target here.")
+        return 0
+
+    for line in done:
+        print(f"  {line}")
+    print(f"\nPruned the {target} target. Re-lock, since the dependency groups moved:")
+    print("  uv lock && uv sync")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
