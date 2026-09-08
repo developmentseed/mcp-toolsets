@@ -394,8 +394,11 @@ images in GHCR (delete the package from the repo settings if you care).
 
 ## Deployment
 
-- **ci.yml** (PRs + main): lint, tests, `helm lint`, and a no-push Docker
-  build of every image affected by the change. Always runs — no cluster needed.
+- **ci.yml** (PRs + main): lint, tests, `helm lint`, `cdk synth` of every shape
+  the stack deploys in, and a no-push Docker build of each image the change
+  affects — the toolsets it selects, plus the index (both variants) and the
+  chat, which no toolset change selects but every shared input rebuilds.
+  Always runs — no cluster and no AWS account needed.
 - **deploy.yml** (main): detects changed toolsets (`scripts/changed-toolsets`)
   — changes to shared build inputs (`infra/`, `Dockerfile`, `uv.lock`, root
   `pyproject.toml`) rebuild *all* toolsets, which is how a runtime version bump
