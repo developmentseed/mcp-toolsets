@@ -15,7 +15,7 @@ served, and how the whole thing deploys. See
 
 ```
 toolsets/<name>/tools.py  ──▶  ghcr.io/<owner>/<repo>/mcp-<name>  ──▶  k8s Service mcp-<name>
-   (LangChain @tool fns)        (Dockerfile --build-arg TOOLSET=...)     (charts/mcp-toolset)
+   (LangChain @tool fns)        (Dockerfile --build-arg TOOLSET=...)     (infra/k8s/charts)
 ```
 
 Terminology: a **tool** is a single LangChain `@tool` function; a **toolset**
@@ -89,8 +89,8 @@ Fix runtime behaviour upstream and release it — never patch it here, since
 nothing local would survive the next `uv sync`.
 
 This repo owns `toolsets/*` — one directory per toolset, each becoming an MCP
-service — `charts/*`, the `Dockerfile`, the workflows, and
-`tests/test_contract.py`.
+service — `infra/*` (the Helm charts under `k8s`, the CDK app under `cdk`), the
+`Dockerfile`, the workflows, and `tests/test_contract.py`.
 
 ### Session state, and what tagging `NotAuthored` adds
 
@@ -231,7 +231,7 @@ tools and merge.
 
 4. (Optional) `toolsets/my-toolset/toolset.yaml` holds Helm value overrides —
    secrets to mount via `envFrom`, env vars, resources, replicas. See
-   `charts/mcp-toolset/values.yaml` for the available keys.
+   `infra/k8s/charts/mcp-toolset/values.yaml` for the available keys.
 
 5. Merge to `main`. CI builds `ghcr.io/<owner>/<repo>/mcp-my-toolset` and
    deploys the `mcp-my-toolset` service automatically.
@@ -397,11 +397,11 @@ images in GHCR (delete the package from the repo settings if you care).
 - **ci.yml** (PRs + main): lint, tests, `helm lint`, and a no-push Docker
   build of every image affected by the change. Always runs — no cluster needed.
 - **deploy.yml** (main): detects changed toolsets (`scripts/changed-toolsets`)
-  — changes to shared build inputs (`charts/`, `Dockerfile`, `uv.lock`, root
+  — changes to shared build inputs (`infra/`, `Dockerfile`, `uv.lock`, root
   `pyproject.toml`) rebuild *all* toolsets, which is how a runtime version bump
   reaches every service — then per toolset: build and push
   `ghcr.io/<owner>/<repo>/mcp-<name>:<sha>` and
-  `helm upgrade --install mcp-<name> charts/mcp-toolset -n __MCP_NAMESPACE__`.
+  `helm upgrade --install mcp-<name> infra/k8s/charts/mcp-toolset -n __MCP_NAMESPACE__`.
   A reconcile job also uninstalls releases whose `toolsets/<name>` directory
   is gone — see [Removing a toolset](#removing-a-toolset).
 - **Deploy guard**: the cluster-touching jobs are skipped unless **both** the
@@ -416,7 +416,7 @@ images in GHCR (delete the package from the repo settings if you care).
 - **Optional secret**: `MCP_INGRESS_HOST` — a shared hostname. When set, every
   toolset also gets an Ingress on that host at `/<name>`, and an `mcp-index`
   service (the same `Dockerfile` built with `TOOLSET=index`, which installs the
-  runtime alone; deployed via `charts/mcp-index`) serves a directory of all
+  runtime alone; deployed via `infra/k8s/charts/mcp-index`) serves a directory of all
   toolsets at the domain root — see
   [Kubernetes cluster setup](#kubernetes-cluster-setup). When unset, services
   stay ClusterIP-only and the only access is `kubectl port-forward` via
@@ -431,7 +431,7 @@ Build an image locally with `docker build --build-arg TOOLSET=hello .`.
 
 - **Optional secret**: `MCP_CHAT_HOST` — a hostname for the hosted chat UI (see
   [Hosted chat](#hosted-chat-bring-your-own-model)). When `MCP_INGRESS_HOST` is
-  set, the deploy builds `Dockerfile.chat` and installs `charts/mcp-chat` on
+  set, the deploy builds `Dockerfile.chat` and installs `infra/k8s/charts/mcp-chat` on
   this host (default `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and
   a TLS cert (`<namespace>-chat-tls`, issued by cert-manager if configured).
 
@@ -481,7 +481,7 @@ one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstra
    ```
 
    (`secrets` is Helm's release storage; `serviceaccounts`/`roles`/
-   `rolebindings` are needed to install `charts/mcp-index`.)
+   `rolebindings` are needed to install `infra/k8s/charts/mcp-index`.)
 
    `KUBE_CONFIG` is a complete kubeconfig file with a deployer token inside —
    not the token alone. The API server URL must be reachable from GitHub's
@@ -535,18 +535,18 @@ one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstra
    hostname at the ingress controller's load balancer
    (`kubectl -n ingress-nginx get svc ingress-nginx-controller`), and tell
    cert-manager how to reach Let's Encrypt — the one resource it can't
-   create for itself. Set your email in `k8s/letsencrypt-clusterissuer.yaml`
+   create for itself. Set your email in `infra/k8s/cluster/letsencrypt-clusterissuer.yaml`
    (Let's Encrypt sends expiry warnings there), then:
 
    ```sh
-   kubectl apply -f k8s/letsencrypt-clusterissuer.yaml
+   kubectl apply -f infra/k8s/cluster/letsencrypt-clusterissuer.yaml
    ```
 
    Certificates are then automatic: the `mcp-index` Ingress is annotated
    `cert-manager.io/cluster-issuer: letsencrypt`, so cert-manager issues and
    renews the `__MCP_NAMESPACE__-tls` Secret that all the Ingresses share. If
    your issuer is named differently, override `ingress.clusterIssuer` in
-   `charts/mcp-index`.
+   `infra/k8s/charts/mcp-index`.
 
 6. **Per-toolset Secrets**, created out-of-band (`kubectl create secret ...`),
    for any names a toolset lists under `secrets:` in its `toolset.yaml`.
@@ -624,6 +624,245 @@ with) and `CHAINLIT_PORT` also come from there. See
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
 config to edit; the index's `/` path only catches what no toolset claims.
+
+## AWS: ECS on Fargate, without EKS
+
+A second deployment target, for AWS accounts that want no Kubernetes. It serves
+the same URLs, from the same images, with the same per-toolset scoping — the
+difference is what is underneath. Both targets are in this repository today;
+[#28](https://github.com/developmentseed/mcp-toolsets/issues/28) tracks the
+bootstrap-time choice that will keep whichever one you pick.
+
+`infra/cdk` is a CDK app in Python, beside the charts in `infra/k8s`. One stack per instance holds a network, an ECS
+cluster, a Fargate service per toolset directory, a load balancer with a rule
+per toolset, the index on the default rule, and the chat on a host of its own.
+Removing a toolset directory removes its service on the next deploy, which is
+what replaces the Kubernetes reconcile job.
+
+| | Kubernetes | AWS |
+| --- | --- | --- |
+| Unit of deploy | a Helm release per toolset | one stack for the instance |
+| A broken toolset | fails its own job; the rest deploy | rolls the whole update back |
+| Reached at | `https://<host>/<toolset>/mcp` | the same |
+| Path handling | the Ingress rewrites `/<toolset>` away | the toolset serves it (`MCP_PATH_PREFIX`) |
+| Certificates | cert-manager, proved over HTTP | ACM, validated by DNS |
+| Deploy identity | a kubeconfig token, ~90 days | a federated role, minted per run |
+| Toolset config | `toolsets/<name>/toolset.yaml` | `toolsets/<name>/toolset.aws.yaml` |
+
+### One-time account setup
+
+1. **Bootstrap the CDK toolkit**, once per account and region, with your own
+   credentials: `npx aws-cdk@2 bootstrap aws://<account>/<region>`.
+
+2. **Deploy the setup stack**, which creates the identity provider and a deploy
+   role whose trust is scoped to this repository. Its output is the role ARN:
+
+   ```sh
+   npx aws-cdk@2 deploy <instance>-setup \
+     --app "uv run --group infra python -m infra.cdk.app" \
+     -c instance=<instance> -c setupOnly=true -c repository=<owner>/<repo>
+   ```
+
+   The identity provider is one per **account**, not per repository. A second
+   repository deploying into the same account must be given the existing one
+   with `-c oidcProviderArn=<arn>`, which the first stack also outputs.
+
+3. **Set the variables and the secret** the deploy workflow gates on. Like the
+   Kubernetes guard, it skips quietly until all three exist, so a fresh
+   instance is green before an account is attached:
+
+   ```sh
+   gh variable set MCP_AWS_INSTANCE --body <instance>   # resource name prefix
+   gh variable set MCP_AWS_REGION --body <region>
+   gh secret set MCP_AWS_ROLE --body <role-arn>         # from step 2
+   ```
+
+   Every input this workflow reads is `MCP_AWS_*`, including the ones whose
+   Kubernetes counterparts are spelled without it. While a repo carries both
+   targets, a shared name would point the AWS deploy at the cluster's
+   hostname — which resolves, answers, and is the wrong place.
+
+4. **For a private repository**, a Secrets Manager secret holding a GitHub
+   username and a token with `read:packages`, so tasks can pull the images:
+   `gh secret set MCP_AWS_REGISTRY_SECRET_ARN --body <arn>`. It is the only
+   long-lived credential in this target, and nothing rotates it.
+
+### Domain and certificates
+
+On the cluster the domain is only a pointer: a record aims at the ingress and
+Let's Encrypt proves the host over HTTP, so nothing touches your DNS provider.
+ACM validates by DNS instead, so here the certificate needs the zone. Three
+shapes, and the difference is who writes the records:
+
+| Secrets set | What the stack does |
+| --- | --- |
+| `MCP_AWS_INGRESS_HOST` + `MCP_AWS_HOSTED_ZONE_ID` | Issues the certificate, writes its validation records, and points both hosts at the load balancer. Renewal needs nobody. |
+| `MCP_AWS_INGRESS_HOST` + `MCP_AWS_CERTIFICATE_ARN` | Writes no DNS. Aim a record at the load balancer name the stack outputs. |
+| neither | Plain HTTP on the name AWS assigns. Testable before a domain exists; not a posture to leave it in. |
+
+`MCP_AWS_CHAT_HOST` overrides the chat's hostname, which otherwise defaults to
+`chat.<host>`. The chat needs a hostname of its own — it is a browser app with
+a websocket, not something to hang off a path — so **without a domain the chat
+is not deployed at all**. Everything else is.
+
+Four things differ from the cluster and are worth knowing before the first
+deploy: the record is an alias rather than an address; the certificate must
+live in the load balancer's region; the validation records are permanent, not
+scaffolding, and deleting them stops renewal silently; and the chat rides on
+the same certificate as a second name, so its hostname has to be known when the
+certificate is requested.
+
+### Tagging
+
+Every taggable resource in both stacks carries four tags, so a bill or an audit
+answers for itself long after the deploy:
+
+| Tag | Default | Override |
+| --- | --- | --- |
+| `Project` | `mcp-toolsets` | `-c project=...` |
+| `Owner` | `ciaran` | `-c owner=...` |
+| `Client` | `labs` | `-c client=...` |
+| `Stack` | `dev` | `-c stack=...` |
+
+They are applied to the whole app rather than resource by resource, so anything
+added later is tagged without anyone remembering to, and the services propagate
+them to the running tasks — a task inherits nothing by default, which would
+leave the one thing that actually runs as the only untagged part. AWS's own
+cluster and service tags are enabled alongside them, since that is what cost
+allocation groups by.
+
+Everything left untagged is a resource type AWS does not tag: routes, security
+group rules, route table associations, IAM policies and DNS records. The
+`mcp-toolsets/toolset` tag the index selects on is separate and unaffected.
+
+### Bring your own network
+
+The stack builds a network by default: public subnets, no gateway, so it
+deploys into an empty account and costs no idle gateway. Point it at an
+existing one with `MCP_AWS_VPC_ID`, `MCP_AWS_SUBNET_IDS` and
+`MCP_AWS_AVAILABILITY_ZONES`
+(comma-separated, one zone per subnet, in order).
+
+The zones are given rather than discovered on purpose: nothing here looks
+anything up from an account, which is what lets CI synthesise the stack on a
+pull request with no credentials. The cost of that rule is this bit of
+configuration; the return is that a broken stack fails review rather than a
+deploy. Whatever subnets you name must be able to reach `ghcr.io`, which is the
+one thing the stack cannot check for you.
+
+### Per-toolset configuration
+
+`toolsets/<name>/toolset.aws.yaml`, beside the Helm one. Both are copied from
+templates in this repo — `infra/cdk/toolset.template.yaml` and
+`infra/k8s/toolset.template.yaml` — which the root `pyproject.toml` names under
+`[tool.mcp-toolset]`, so the scaffolder writes your files rather than guessing
+at them. The two are not translations of each other, which is why there are
+two: a Kubernetes secret
+exposes every key at once, where a task definition names variables one at a
+time, and Fargate sells fixed cpu/memory combinations rather than a request and
+a limit.
+
+```yaml
+size: { cpu: 512, memory: 1024 }     # omit for the smallest task
+env:
+  STAC_URL: https://example.org/stac
+secrets:                             # Parameter Store, read at task start
+  API_TOKEN: /mcp-toolsets/<instance>/<toolset>/api-token
+```
+
+Create the parameters out of band, the way cluster secrets are created:
+
+```sh
+aws ssm put-parameter --type SecureString \
+  --name /mcp-toolsets/<instance>/<toolset>/api-token --value <secret>
+```
+
+Parameter Store's standard tier is free. Secrets Manager is roughly $0.40 per
+secret per month and buys rotation, cross-account sharing and JSON secrets —
+worth moving to when you need one of those, and three places change: the
+reference in the toolset file, the execution role's grant, and this command.
+
+### What it costs to leave up
+
+Every toolset is its own always-on task, so cost scales with toolset count in a
+way a shared namespace does not. Approximate list prices in a US region,
+excluding data transfer:
+
+| | Per month |
+| --- | --- |
+| Fargate task, 0.25 vCPU / 0.5 GB | ~$9 |
+| Five tasks: three examples, index, chat | ~$45 |
+| Load balancer | ~$16 base |
+| NAT gateway | ~$32 — avoided by the default public subnets |
+
+### Deploying it by hand
+
+The workflow is one way in, not the only one. With your own credentials, from
+the repo root (where `cdk.json` is), the region coming from your environment
+because the stacks name none:
+
+The account needs the CDK toolkit once per region. Run that from outside the
+repo: `cdk bootstrap` executes whatever app `cdk.json` names, even when you
+give it the environment explicitly, and this app refuses to build without its
+context.
+
+```sh
+(cd /tmp && npx aws-cdk@2 bootstrap aws://<account>/eu-west-2)
+```
+
+Then, from the repo root:
+
+```sh
+uv sync --group infra
+export AWS_REGION=eu-west-2                     # or AWS_PROFILE, with a region
+npx aws-cdk@2 deploy <instance> \
+  -c instance=<instance> \
+  -c imagePrefix=ghcr.io/<owner>/<repo> \
+  -c imageTags='{"hello":"<tag>","index-aws":"<tag>","chat":"<tag>"}' \
+  -c host=mcp.example.com -c hostedZoneId=<zone-id>
+```
+
+Every toolset needs a tag, and so do `index-aws` and `chat` — a stack has no memory
+of what a service is running, so a missing one is refused rather than guessed
+at. The AWS index is `mcp-index-aws`, built from the runtime's AWS extra, because
+the cluster's `mcp-index` discovers over the Kubernetes API and cannot see
+anything here. The deploy workflow publishes every image on a push to main
+whether or not an account is wired up, so the tags usually exist already; to
+build one yourself: ```sh
+docker build --platform linux/amd64 \
+  --build-arg TOOLSET=<name> -t ghcr.io/<owner>/<repo>/mcp-<name>:<tag> .
+docker push ghcr.io/<owner>/<repo>/mcp-<name>:<tag>
+```
+
+where `<name>` is a toolset, or `index-aws` for the directory. The platform
+flag matters on Apple silicon: the tasks run x86, and an arm64 image fails at
+startup with `exec format error`, which names the symptom rather than the
+cause. CI builds on x86 runners, so its images never hit this.
+
+Add `-c setupOnly=true -c repository=<owner>/<repo>` to deploy only the
+identity stack, and `-c oidcProviderArn=<arn>` when the account already has
+GitHub's provider — it is one per account, so a second repository must be given
+the existing one rather than creating another.
+
+### Working on the stack
+
+```sh
+uv run --group infra python -m infra.cdk.app -c instance=dev \
+  -c imagePrefix=ghcr.io/<owner>/<repo> -c imageTags='{"hello":"abc"}'
+uv run --group infra pytest infra
+```
+
+Needs node, because `aws-cdk-lib` is a Python package with a JavaScript engine
+underneath. Synthesis reaches for no account, so this works anywhere; CI runs
+the same command over each domain shape and fails if any of them asks for
+context an account would have to supply.
+
+Image tags are explicit state. Helm keeps each release's tag in the cluster, so
+deploying one changed toolset leaves the others alone; a stack has no such
+memory and must be told a tag for every service it synthesises. The deploy
+reads the current tags from Parameter Store, overrides the ones it just built,
+hands the whole map to the synthesis, and writes them back only after the stack
+accepts them.
 
 ### Per-user credentials
 
