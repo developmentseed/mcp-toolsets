@@ -34,10 +34,10 @@ deployment target — see README), the `Dockerfile`, the workflows and
   live at `<package>/views/*.html`, are git-ignored, and must exist before
   `mcp-serve` or `build_server` aborts — the Dockerfile's node stage, the CI
   `ui` job, and this script rebuild them.
-- Chainlit host element: `uv run mcp-agent install-elements` writes
-  `public/elements/McpView.jsx` from the runtime package. Git-ignored and not
-  vendored — re-run it after a runtime bump, or views won't render in
-  `mcp-agent-web` (it warns and starts anyway).
+- The hosted chat is the runtime's `mcp_agent_api`, page included: the web
+  client ships inside the wheel, so nothing here builds or vendors a frontend
+  and `Dockerfile.chat` runs `uvicorn`. Its text is `MCP_AGENT_UI_*`, set in
+  the chart's values or in `infra/cdk/config.py`'s `Chat`.
 
 ## Safety
 

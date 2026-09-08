@@ -6,11 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     # The shared runtime, installed from PyPI — mcp_runtime (mcp-serve /
-    # mcp-index), mcp_cli, mcp_toolset, and with [web] the Chainlit chat host.
-    # [web] is here for the dev environment, which runs `mcp-agent-web` and
-    # `mcp-agent install-elements`; the toolset images sync with `--package` and
-    # so never see it. Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[web]<0.9.0,>=0.8.3",
+    # mcp-index), mcp_cli, mcp_toolset, and with [api] the agent over HTTP plus
+    # the web client it serves. [api] is here for the dev environment, which
+    # runs the chat locally; the toolset images sync with `--package` and so
+    # never see it. Upgrade by bumping this range and running `uv lock`.
+    "mcp-toolsets-runtime[api]<0.9.0,>=0.8.4",
     "credential-demo",
     "hello",
     "stac-explorer",
@@ -29,10 +29,11 @@ index = ["mcp-toolsets-runtime"]
 # cluster deployment's image does not carry an AWS SDK it never calls.
 index-aws = ["mcp-toolsets-runtime[aws]"]
 # /target:aws
-# Likewise for the hosted chat image (Dockerfile.chat): the agent and its
-# Chainlit stack, no toolsets. [web] rather than [agent] since 0.5.0 — the
-# runtime split the Chainlit host out so an API deployment need not install it.
-chat = ["mcp-toolsets-runtime[web]"]
+# Likewise for the hosted chat image (Dockerfile.chat): the agent over HTTP
+# and the web client the runtime serves with it, no toolsets. [api] rather than
+# [web] since 0.8.4 — the chat is an AG-UI service now, and Chainlit is gone
+# from this repo entirely.
+chat = ["mcp-toolsets-runtime[api]"]
 # target:aws
 # The AWS deployment target: the CDK app under infra/. A group rather than a
 # dependency so the k8s path never installs it, and so bootstrap drops the

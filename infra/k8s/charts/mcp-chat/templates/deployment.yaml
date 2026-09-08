@@ -23,28 +23,62 @@ spec:
       containers:
         - name: mcp-chat
           image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
-          command: [mcp-agent-web]
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
           env:
-            # No PROVIDER_API_KEY: the model is bring-your-own, set per session
-            # in the UI. Only the index URL and Chainlit bind config are baked in.
             - name: MCP_URL
               value: {{ .Values.mcpUrl | quote }}
-            - name: CHAINLIT_HOST
-              value: "0.0.0.0"
-            - name: CHAINLIT_PORT
-              value: {{ .Values.service.port | quote }}
-          # Chainlit has no dedicated health route; a TCP check confirms the
-          # server is accepting connections.
+            # The model is the deployment's, and so is the bill. The key is
+            # never a value here: it is read from a Secret, either this chart's
+            # own or one named in `provider.existingSecret`.
+            - name: PROVIDER_MODEL
+              value: {{ required "provider.model is required" .Values.provider.model | quote }}
+            - name: PROVIDER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.provider.existingSecret | default "mcp-chat-provider" }}
+                  key: {{ if .Values.provider.existingSecret }}{{ .Values.provider.existingSecretKey }}{{ else }}provider-api-key{{ end }}
+            {{- with .Values.ui.title }}
+            - name: MCP_AGENT_UI_TITLE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.tagline }}
+            - name: MCP_AGENT_UI_TAGLINE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.greeting }}
+            - name: MCP_AGENT_UI_GREETING
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.examples }}
+            # One question per line: the runtime reads this variable as lines
+            # or as a JSON array, and a block scalar is what a values file
+            # writes a list of sentences as.
+            - name: MCP_AGENT_UI_EXAMPLES
+              value: |-
+                {{- range . }}
+                {{ . }}
+                {{- end }}
+            {{- end }}
+            {{- with .Values.ui.accent }}
+            - name: MCP_AGENT_UI_ACCENT
+              value: {{ . | quote }}
+            {{- end }}
+          # Two probes rather than one, because they fail differently: the
+          # agent connects to every toolset before it can answer, and readiness
+          # is 503 for as long as that takes. A liveness probe on the same
+          # route would restart a process that is doing nothing wrong.
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/liveness
               port: http
             initialDelaySeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/readiness
               port: http
             initialDelaySeconds: 5
+            periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

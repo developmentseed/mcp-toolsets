@@ -25,6 +25,7 @@ jobs:
       toolsets: ${{ steps.changed.outputs.toolsets }}
       ingress: ${{ steps.ingress.outputs.enabled }}
       deploy: ${{ steps.deploy.outputs.enabled }}
+      chat: ${{ steps.chat.outputs.enabled }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -41,6 +42,14 @@ jobs:
         env:
           MCP_INGRESS_HOST: ${{ secrets.MCP_INGRESS_HOST }}
         run: echo "enabled=${MCP_INGRESS_HOST:+true}" >> "$GITHUB_OUTPUT"
+      # The chat runs every visitor's questions on one model, billed to the
+      # deployment — so it deploys only where someone has deliberately put a
+      # key there. No secret, no chat service, and the rest of the deploy is
+      # unaffected. Computed here because a job-level `if` cannot read secrets.
+      - id: chat
+        env:
+          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+        run: echo "enabled=${PROVIDER_API_KEY:+true}" >> "$GITHUB_OUTPUT"
       # A fresh template instance has neither a kubeconfig nor a namespace, so
       # skip every job that touches a cluster — CI stays green until both the
       # KUBE_CONFIG secret and the MCP_NAMESPACE variable are configured.
@@ -186,10 +195,10 @@ jobs:
 
   chat:
     needs: detect
-    # The hosted BYOM chat UI. Gated like the index (shared code selects all
-    # toolsets; docs-only pushes skip). No provider secret is deployed — the
-    # model is bring-your-own, entered per user in the UI.
-    if: needs.detect.outputs.ingress == 'true' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
+    # The hosted chat UI: the runtime's agent over HTTP and the web client it
+    # serves. Gated like the index (shared code selects all toolsets; docs-only
+    # pushes skip), and additionally on a provider key — see `detect`.
+    if: needs.detect.outputs.ingress == 'true' && needs.detect.outputs.chat == 'true' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -223,11 +232,25 @@ jobs:
           # Optional override; defaults to chat.<shared-domain>. Needs its own
           # DNS record and (with cert-manager) a cert for the chat host.
           MCP_CHAT_HOST: ${{ secrets.MCP_CHAT_HOST }}
+          # The model, and the key it is billed to. The key is a secret; the
+          # model is not, so it is a variable — and it falls back to whatever
+          # the chart's values.yaml commits, for a repo that would rather keep
+          # the choice in the tree.
+          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
           chat_host="${MCP_CHAT_HOST:-chat.$MCP_INGRESS_HOST}"
+          # --set-file, not --set: helm reads commas in a --set value as
+          # separators, and an API key containing one would arrive truncated
+          # and be wrong in a way that looks like a rejected key. printf
+          # rather than echo, because a trailing newline would go into the
+          # Secret and travel out on the Authorization header.
+          printf '%s' "$PROVIDER_API_KEY" > "$RUNNER_TEMP/provider-key"
           helm upgrade --install mcp-chat infra/k8s/charts/mcp-chat \
             --namespace "$MCP_NAMESPACE" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
             --set ingress.host="$chat_host" \
-            --set ingress.tlsSecret=${MCP_NAMESPACE}-chat-tls
+            --set ingress.tlsSecret=${MCP_NAMESPACE}-chat-tls \
+            ${MCP_CHAT_MODEL:+--set provider.model="$MCP_CHAT_MODEL"} \
+            --set-file provider.apiKey="$RUNNER_TEMP/provider-key"

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: mcp-chat
-description: Hosted bring-your-own-model chat UI over the deployed mcp-toolsets.
+description: Hosted AG-UI chat over the deployed mcp-toolsets, on the deployment's own model.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

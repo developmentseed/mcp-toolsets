@@ -163,6 +163,19 @@ class ToolsetsStack(Stack):
             zone_name=str(domain.host),
         )
 
+    @property
+    def chat_host(self) -> str | None:
+        """The hostname the chat answers on, or ``None`` if there is no chat.
+
+        One predicate for three questions — the certificate's second name, the
+        listener rule, and the DNS record — because they have to agree. They
+        did not: a record was written for a host with no service behind it,
+        which resolves and lands on the index.
+        """
+        if not self.deployment.chat.enabled:
+            return None
+        return self.deployment.domain.resolved_chat_host
+
     def _certificate(self) -> acm.ICertificate | None:
         """Issue one against the zone, or adopt the one we were given.
 
@@ -177,7 +190,7 @@ class ToolsetsStack(Stack):
             )
         if self.zone is None:
             return None
-        chat_host = domain.resolved_chat_host
+        chat_host = self.chat_host
         return acm.Certificate(
             self,
             "Certificate",
@@ -420,16 +433,19 @@ class ToolsetsStack(Stack):
         return service
 
     def _chat(self) -> None:
-        """The bring-your-own-model chat, on a host of its own.
+        """The hosted chat, on a host of its own.
 
-        Host rather than path: it is a browser app with its own asset paths and
-        a websocket, and it holds conversations in the task's memory — hence one
-        task and sticky sessions, matching the chart's single replica.
+        Host rather than path: it is a browser app serving its own assets, and
+        it holds conversations in the task's memory — hence one task and sticky
+        sessions, matching the chart's single replica.
 
-        Skipped entirely without a domain, because a hostname is the only way
-        to route to it.
+        Skipped without a domain, because a hostname is the only way to route
+        to it, and skipped without a model, because the model is what it costs
+        money to answer on. Neither is a misconfiguration; both are the default
+        for a deployment that has not asked for a chat.
         """
-        chat_host = self.deployment.domain.resolved_chat_host
+        chat_host = self.chat_host
+        chat = self.deployment.chat
         if not chat_host:
             return
         namespace = f"{self.deployment.instance}.internal"
@@ -444,8 +460,14 @@ class ToolsetsStack(Stack):
                 # be derived rather than written out: naming it by hand is how
                 # renaming the component broke this link once already.
                 "MCP_URL": f"http://mcp-{INDEX_COMPONENT}.{namespace}:{TOOLSET_PORT}/",
-                "CHAINLIT_HOST": "0.0.0.0",  # noqa: S104
-                "CHAINLIT_PORT": str(CHAT_PORT),
+                "PROVIDER_MODEL": chat.model,
+                **chat.environment(),
+            },
+            # Read at task start, never in the template: a key passed as
+            # context would be in CloudFormation, readable by anyone who can
+            # describe the stack.
+            secrets={
+                "PROVIDER_API_KEY": chat.parameter(self.deployment.parameter_prefix)
             },
         )
         # The chat reads the directory over the same closed network.
@@ -462,10 +484,14 @@ class ToolsetsStack(Stack):
             priority=CHAT_RULE_PRIORITY,
             conditions=[elbv2.ListenerCondition.host_headers([chat_host])],
             stickiness_cookie_duration=Duration.hours(8),
-            # Chainlit serves no health route; reaching the port is the check
-            # the chart makes too.
+            # Readiness, not the page: the task serves its page as soon as the
+            # process is up, and stays unable to answer until it has connected
+            # to every toolset. A check on "/" would put it in service while
+            # every question it was sent would 503.
             health_check=elbv2.HealthCheck(
-                path="/", healthy_http_codes="200-399", interval=Duration.seconds(30)
+                path="/health/readiness",
+                healthy_http_codes="200",
+                interval=Duration.seconds(30),
             ),
         )
 
@@ -477,7 +503,7 @@ class ToolsetsStack(Stack):
             route53_targets.LoadBalancerTarget(self.load_balancer)
         )
         route53.ARecord(self, "IndexRecord", zone=self.zone, target=target)
-        chat_host = self.deployment.domain.resolved_chat_host
+        chat_host = self.chat_host
         if chat_host:
             route53.ARecord(
                 self,

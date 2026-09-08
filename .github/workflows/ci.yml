@@ -30,6 +30,13 @@ jobs:
           --set ingress.host=test.example.com
           --set image.repository=test
           --set image.tag=test
+      - run: >
+          helm lint infra/k8s/charts/mcp-chat
+          --set ingress.host=chat.test.example.com
+          --set image.repository=test
+          --set image.tag=test
+          --set provider.model=openai:gpt-4o-mini
+          --set provider.apiKey=test
   # /target:k8s
 
   # target:aws

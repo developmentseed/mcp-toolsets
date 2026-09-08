@@ -28,6 +28,15 @@ BASE = {
     "imagePrefix": "ghcr.io/owner/repo",
 }
 
+#: A deployment that has a chat. It takes both: a hostname to route to, and a
+#: model to answer on — the second is what a deployment opts in to, because
+#: every visitor's questions are billed to the account it deploys into.
+WITH_CHAT = {
+    "host": "mcp.example.com",
+    "hostedZoneId": "Z1",
+    "chatModel": "openai:gpt-4o-mini",
+}
+
 
 def assembly(**context):
     tags = json.dumps({name: "sha1" for name in (*TOOLSETS, INDEX_COMPONENT, "chat")})
@@ -55,9 +64,7 @@ def test_synthesis_needs_no_account():
 
 
 def test_one_service_per_toolset_plus_the_index_and_chat():
-    template(host="mcp.example.com", hostedZoneId="Z1").resource_count_is(
-        "AWS::ECS::Service", len(TOOLSETS) + 2
-    )
+    template(**WITH_CHAT).resource_count_is("AWS::ECS::Service", len(TOOLSETS) + 2)
 
 
 def test_every_toolset_service_carries_the_tag_the_index_selects_on():
@@ -99,7 +106,7 @@ def test_each_toolset_claims_its_own_path():
 def test_health_checks_use_the_root_route():
     """Below the routing that adds the prefix, which is why the runtime keeps
     answering there as well as at the prefixed path."""
-    groups = template(host="mcp.example.com", hostedZoneId="Z1").find_resources(
+    groups = template(**WITH_CHAT).find_resources(
         "AWS::ElasticLoadBalancingV2::TargetGroup"
     )
     paths = {
@@ -107,7 +114,10 @@ def test_health_checks_use_the_root_route():
         for group in groups.values()
         if group["Properties"].get("HealthCheckPath")
     }
-    assert paths == {"/health", "/"}  # "/" is the chat, which serves no health route
+    # The chat's is readiness rather than its page: it serves the page as soon
+    # as the process is up, and cannot answer until it has connected to every
+    # toolset. Checking the page would put it in service answering 503.
+    assert paths == {"/health", "/health/readiness"}
 
 
 def test_the_index_can_read_what_is_running():
@@ -140,9 +150,7 @@ def test_the_chat_is_pointed_at_the_index_by_its_registered_name():
     environment and the name the index registers under are the same fact.
     Written out by hand, a rename breaks the link and the chat fails at the
     first request with a DNS error rather than at deploy."""
-    definitions = template(host="mcp.example.com", hostedZoneId="Z1").find_resources(
-        "AWS::ECS::TaskDefinition"
-    )
+    definitions = template(**WITH_CHAT).find_resources("AWS::ECS::TaskDefinition")
     urls = [
         variable["Value"]
         for definition in definitions.values()
@@ -158,9 +166,7 @@ def test_the_index_and_chat_can_reach_what_they_talk_to():
     let in by default. In a cluster pods talk freely and this rule has no
     equivalent; here, without it, the index lists toolsets it cannot reach and
     reports every one of them unreachable."""
-    ingress = template(host="mcp.example.com", hostedZoneId="Z1").find_resources(
-        "AWS::EC2::SecurityGroupIngress"
-    )
+    ingress = template(**WITH_CHAT).find_resources("AWS::EC2::SecurityGroupIngress")
     reasons = [rule["Properties"].get("Description", "") for rule in ingress.values()]
     # One per toolset for the index, plus the chat reaching the index.
     assert sum("the index asks each toolset" in r for r in reasons) == len(TOOLSETS)
@@ -173,12 +179,63 @@ def test_the_index_and_chat_can_reach_what_they_talk_to():
 
 
 def test_a_managed_domain_writes_its_own_records_and_certificate():
-    managed = template(host="mcp.example.com", hostedZoneId="Z1")
+    managed = template(**WITH_CHAT)
     managed.resource_count_is("AWS::Route53::RecordSet", 2)
     managed.has_resource_properties(
         "AWS::CertificateManager::Certificate",
         {"SubjectAlternativeNames": ["chat.mcp.example.com"]},
     )
+
+
+def test_a_hostname_alone_deploys_no_chat_and_no_record_for_one():
+    """The record is the part worth a test. A name that resolves to the load
+    balancer with no rule behind it does not fail — it lands on the index, so
+    the chat host answers with the directory and looks like a broken chat."""
+    without = template(host="mcp.example.com", hostedZoneId="Z1")
+    without.resource_count_is("AWS::ECS::Service", len(TOOLSETS) + 1)
+    without.resource_count_is("AWS::Route53::RecordSet", 1)
+    certificates = without.find_resources("AWS::CertificateManager::Certificate")
+    assert all(
+        "SubjectAlternativeNames" not in certificate["Properties"]
+        for certificate in certificates.values()
+    )
+
+
+def test_the_provider_key_is_a_reference_and_never_a_value():
+    """It is read at task start from Parameter Store. Passed as context it
+    would sit in the template, readable by anyone who can describe the stack."""
+    rendered = json.dumps(
+        assembly(**WITH_CHAT, chatApiKeyParameter="/somewhere/else")
+        .get_stack_by_name("mcp-toolsets")
+        .template
+    )
+    assert "/somewhere/else" in rendered
+    definitions = template(**WITH_CHAT).find_resources("AWS::ECS::TaskDefinition")
+    secrets = [
+        secret
+        for definition in definitions.values()
+        for container in definition["Properties"]["ContainerDefinitions"]
+        for secret in container.get("Secrets", [])
+    ]
+    assert [secret["Name"] for secret in secrets] == ["PROVIDER_API_KEY"]
+    assert "ValueFrom" in secrets[0]
+
+
+def test_the_page_is_configured_from_the_deployments_own_text():
+    """`Chat`'s defaults are committed prose about this deployment, and they
+    reach the client as the variables the runtime reads."""
+    definitions = template(**WITH_CHAT).find_resources("AWS::ECS::TaskDefinition")
+    variables = {
+        variable["Name"]: variable["Value"]
+        for definition in definitions.values()
+        for container in definition["Properties"]["ContainerDefinitions"]
+        for variable in container.get("Environment", [])
+    }
+    assert variables["PROVIDER_MODEL"] == "openai:gpt-4o-mini"
+    assert variables["MCP_AGENT_UI_TITLE"]
+    # Unset text is left out rather than set empty: the client falls back to
+    # its own default on an absent variable, and to nothing on an empty one.
+    assert "MCP_AGENT_UI_GREETING" not in variables
 
 
 def test_bringing_your_own_certificate_writes_no_dns():

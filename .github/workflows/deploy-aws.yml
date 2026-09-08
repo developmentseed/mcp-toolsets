@@ -182,6 +182,12 @@ jobs:
         env:
           MCP_AWS_INGRESS_HOST: ${{ secrets.MCP_AWS_INGRESS_HOST }}
           MCP_AWS_CHAT_HOST: ${{ secrets.MCP_AWS_CHAT_HOST }}
+          # The chat answers every visitor on this model, billed to the account
+          # deployed into — so naming one is how a deployment turns the chat on,
+          # and leaving it unset is how it stays off. A variable, not a secret:
+          # the key it spends lives in Parameter Store and is read at task
+          # start, never passed through here.
+          MCP_AWS_CHAT_MODEL: ${{ vars.MCP_AWS_CHAT_MODEL }}
           MCP_AWS_HOSTED_ZONE_ID: ${{ secrets.MCP_AWS_HOSTED_ZONE_ID }}
           MCP_AWS_CERTIFICATE_ARN: ${{ secrets.MCP_AWS_CERTIFICATE_ARN }}
           MCP_AWS_REGISTRY_SECRET_ARN: ${{ secrets.MCP_AWS_REGISTRY_SECRET_ARN }}
@@ -198,6 +204,7 @@ jobs:
             -c imageTags="$(cat ${{ steps.tags.outputs.file }})" \
             ${MCP_AWS_INGRESS_HOST:+-c host="$MCP_AWS_INGRESS_HOST"} \
             ${MCP_AWS_CHAT_HOST:+-c chatHost="$MCP_AWS_CHAT_HOST"} \
+            ${MCP_AWS_CHAT_MODEL:+-c chatModel="$MCP_AWS_CHAT_MODEL"} \
             ${MCP_AWS_HOSTED_ZONE_ID:+-c hostedZoneId="$MCP_AWS_HOSTED_ZONE_ID"} \
             ${MCP_AWS_CERTIFICATE_ARN:+-c certificateArn="$MCP_AWS_CERTIFICATE_ARN"} \
             ${MCP_AWS_REGISTRY_SECRET_ARN:+-c registrySecretArn="$MCP_AWS_REGISTRY_SECRET_ARN"} \
