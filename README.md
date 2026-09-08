@@ -833,6 +833,7 @@ anything here. The deploy workflow publishes every image on a push to main
 whether or not an account is wired up, so the tags usually exist already; to
 build one yourself: ```sh
 docker build --platform linux/amd64 \
+  --label org.opencontainers.image.source=https://github.com/<owner>/<repo> \
   --build-arg TOOLSET=<name> -t ghcr.io/<owner>/<repo>/mcp-<name>:<tag> .
 docker push ghcr.io/<owner>/<repo>/mcp-<name>:<tag>
 ```
@@ -841,6 +842,14 @@ where `<name>` is a toolset, or `index-aws` for the directory. The platform
 flag matters on Apple silicon: the tasks run x86, and an arm64 image fails at
 startup with `exec format error`, which names the symptom rather than the
 cause. CI builds on x86 runners, so its images never hit this.
+
+The source label matters only when your push is the one that creates the
+package. GHCR links a package to a repository either because a workflow in that
+repository pushed it or because this label says so, and a package linked to
+neither grants the repository's Actions no access to it — so the next deploy
+fails on `denied: permission_denied: write_package` for an image that plainly
+exists. Recovering means adding the repository under *Manage Actions access* in
+the package's settings, which is not something a workflow can do for itself.
 
 Add `-c setupOnly=true -c repository=<owner>/<repo>` to deploy only the
 identity stack, and `-c oidcProviderArn=<arn>` when the account already has
