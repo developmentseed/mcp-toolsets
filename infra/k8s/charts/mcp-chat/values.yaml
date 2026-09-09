@@ -35,13 +35,17 @@ mcpUrl: "http://mcp-index:8000/"
 # `model` is a provider:model string for LangChain's init_chat_model, and the
 # image bundles the drivers for anthropic, openai, google-genai and mistralai.
 #
+# The deploy sets `model` from the MCP_CHAT_MODEL repo variable, and naming one
+# there is what deploys this chart at all. Set here, it is the default for
+# anyone installing the chart by hand.
+#
 # The key arrives one of two ways, and never in a committed file:
 #   apiKey          — a value (the deploy passes the MCP_PROVIDER_API_KEY
 #                     secret), which this chart puts in a Secret of its own
 #   existingSecret  — the name of a Secret you manage, with the key in
 #                     `existingSecretKey`
-# With neither, there is nothing to run the agent on and the deploy skips this
-# release entirely rather than starting a service that answers 503 forever.
+# The deploy refuses to run with a model and no key, rather than installing a
+# release that cannot answer.
 provider:
   model: ""
   apiKey: ""

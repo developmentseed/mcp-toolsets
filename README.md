@@ -508,10 +508,12 @@ kubectl -n __MCP_NAMESPACE__ port-forward svc/mcp-hello 8000:8000
 uv run mcp-cli list
 ```
 
-- **Optional secret**: `MCP_PROVIDER_API_KEY` — the provider key the hosted
-  chat answers on (see [Hosted chat](#hosted-chat)). Setting it is what deploys
-  the chat at all; without it no chat service exists. The model it names goes
-  in the `MCP_CHAT_MODEL` variable, or in the chart's `provider.model`.
+- **Optional variable**: `MCP_CHAT_MODEL` — a `provider:model` string. Naming
+  one is what deploys the hosted chat at all; unset, no chat service exists
+  (see [Hosted chat](#hosted-chat)).
+- **Optional secret**: `MCP_PROVIDER_API_KEY` — the key that model answers on.
+  Required once `MCP_CHAT_MODEL` is set: the deploy fails naming this secret
+  rather than skipping, because a deployment that named a model wanted a chat.
 - **Optional secret**: `MCP_CHAT_HOST` — a hostname for the chat (default
   `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and a TLS cert
   (`<namespace>-chat-tls`, issued by cert-manager if configured).
@@ -566,8 +568,12 @@ in the transcript.
 at startup from `PROVIDER_MODEL` and `PROVIDER_API_KEY`, so anyone who can open
 the page spends that key. Two consequences worth stating plainly:
 
-- **No key, no chat.** Neither target deploys the service without one. That is
-  the default for a repository made from this template.
+- **Naming a model is what deploys a chat**, on both targets: the
+  `MCP_CHAT_MODEL` variable on Kubernetes, `MCP_AWS_CHAT_MODEL` on AWS. Unset,
+  which is how a repository made from this template starts, there is no chat
+  service at all. The key is then required rather than a second switch — the
+  deploy stops and names it, because two switches for one decision is how a
+  chat goes missing with nothing said.
 - **Put something in front of it** — an auth proxy, an ingress annotation, an
   allowlist — unless leaving the spend open is a decision you have made.
 
@@ -591,16 +597,20 @@ which stays true as toolsets come and go.
 
 <!-- target:k8s -->
 It deploys alongside the index when `MCP_INGRESS_HOST` and the
-`MCP_PROVIDER_API_KEY` secret are both set (on a shared-code change or a
-`workflow_dispatch` run).
+`MCP_CHAT_MODEL` variable are set (on a shared-code change or a
+`workflow_dispatch` run). The `MCP_PROVIDER_API_KEY` secret is then required,
+and the deploy stops on the missing one by name.
 <!-- /target:k8s -->
 <!-- target:aws -->
 It is a service in the stack like any other, so it deploys with everything
-else. `MCP_AWS_CHAT_HOST` gives it a hostname, the `MCP_AWS_CHAT_MODEL`
-variable turns it on, and its key is a Parameter Store SecureString at
-`/mcp-toolsets/<instance>/chat/provider-api-key`, which you create once — the
-key is never passed as CDK context, which would put it in the template. The
-load balancer holds sessions to one task so a conversation survives.
+else. `MCP_AWS_CHAT_HOST` gives it a hostname and the `MCP_AWS_CHAT_MODEL`
+variable turns it on, exactly as on the other target. Its key is a Parameter
+Store SecureString at `/mcp-toolsets/<instance>/chat/provider-api-key`, which
+you create once; it is never CDK context, which would put it in the template.
+The deploy checks that parameter exists before it starts — synthesis is
+credential-free by rule, so the stack itself cannot know, and without the check
+the first sign would be a task that failed to start and rolled back. The load
+balancer holds sessions to one task so a conversation survives.
 <!-- /target:aws -->
 
 Conversations are checkpointed per thread, **in the serving process's memory by

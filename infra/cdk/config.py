@@ -178,15 +178,18 @@ class Domain:
 class Chat:
     """The hosted chat: the model it answers on, and what its page says.
 
-    Nothing is deployed without ``model``. The chat runs every visitor's
-    questions on one model and bills them to this account, so a deployment
-    turns it on deliberately or not at all — an empty model is not a
-    misconfiguration, it is the default.
+    Nothing is deployed without ``model``, and that is the switch on both of
+    this repo's targets rather than an AWS quirk: it is the one input a
+    credential-free synthesis and a Helm deploy can both see. The chat runs
+    every visitor's questions on one model and bills them to this account, so
+    a deployment turns it on deliberately or not at all — an empty model is
+    not a misconfiguration, it is the default.
 
     The key is never here and never in context, which would put it in a
     CloudFormation template. It is read at task start from a Parameter Store
     SecureString, the same way a toolset's own secrets are, and creating that
-    parameter is the deploying account's job.
+    parameter is the deploying account's job — the deploy workflow checks it
+    exists before deploying a stack that names it, because nothing here can.
 
     The rest is what the page says about itself. It is committed rather than
     passed in because it is prose about *this* deployment, reviewed like any

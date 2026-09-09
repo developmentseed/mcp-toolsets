@@ -25,7 +25,6 @@ jobs:
       toolsets: ${{ steps.changed.outputs.toolsets }}
       ingress: ${{ steps.ingress.outputs.enabled }}
       deploy: ${{ steps.deploy.outputs.enabled }}
-      chat: ${{ steps.chat.outputs.enabled }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -42,14 +41,6 @@ jobs:
         env:
           MCP_INGRESS_HOST: ${{ secrets.MCP_INGRESS_HOST }}
         run: echo "enabled=${MCP_INGRESS_HOST:+true}" >> "$GITHUB_OUTPUT"
-      # The chat runs every visitor's questions on one model, billed to the
-      # deployment — so it deploys only where someone has deliberately put a
-      # key there. No secret, no chat service, and the rest of the deploy is
-      # unaffected. Computed here because a job-level `if` cannot read secrets.
-      - id: chat
-        env:
-          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
-        run: echo "enabled=${PROVIDER_API_KEY:+true}" >> "$GITHUB_OUTPUT"
       # A fresh template instance has neither a kubeconfig nor a namespace, so
       # skip every job that touches a cluster — CI stays green until both the
       # KUBE_CONFIG secret and the MCP_NAMESPACE variable are configured.
@@ -197,11 +188,26 @@ jobs:
     needs: detect
     # The hosted chat UI: the runtime's agent over HTTP and the web client it
     # serves. Gated like the index (shared code selects all toolsets; docs-only
-    # pushes skip), and additionally on a provider key — see `detect`.
-    if: needs.detect.outputs.ingress == 'true' && needs.detect.outputs.chat == 'true' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
+    # pushes skip), and on naming a model — which is what turns the chat on,
+    # here and on the AWS target, because it is the one input both can see.
+    # The key it spends is checked below rather than gated on: a deployment
+    # that named a model and forgot the key wanted a chat, and silence would
+    # leave it wondering where it went.
+    if: needs.detect.outputs.ingress == 'true' && vars.MCP_CHAT_MODEL != '' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: The model has a key to answer on
+        env:
+          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+        run: |
+          if [ -z "$PROVIDER_API_KEY" ]; then
+            echo "::error::MCP_CHAT_MODEL names ${{ vars.MCP_CHAT_MODEL }}, but" \
+                 "there is no MCP_PROVIDER_API_KEY secret to answer on it." \
+                 "Set it (gh secret set MCP_PROVIDER_API_KEY), or clear the" \
+                 "MCP_CHAT_MODEL variable to deploy no chat."
+            exit 1
+          fi
       - id: image
         name: Compute image name (ghcr requires lowercase)
         run: echo "repository=ghcr.io/${GITHUB_REPOSITORY@L}/mcp-chat" >> "$GITHUB_OUTPUT"
@@ -233,9 +239,8 @@ jobs:
           # DNS record and (with cert-manager) a cert for the chat host.
           MCP_CHAT_HOST: ${{ secrets.MCP_CHAT_HOST }}
           # The model, and the key it is billed to. The key is a secret; the
-          # model is not, so it is a variable — and it falls back to whatever
-          # the chart's values.yaml commits, for a repo that would rather keep
-          # the choice in the tree.
+          # model is not, so it is a variable — and it is the variable this job
+          # is gated on, so it is always set by the time we get here.
           PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
           MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
@@ -252,5 +257,5 @@ jobs:
             --set image.tag="${{ github.sha }}" \
             --set ingress.host="$chat_host" \
             --set ingress.tlsSecret=${MCP_NAMESPACE}-chat-tls \
-            ${MCP_CHAT_MODEL:+--set provider.model="$MCP_CHAT_MODEL"} \
+            --set provider.model="$MCP_CHAT_MODEL" \
             --set-file provider.apiKey="$RUNNER_TEMP/provider-key"
