@@ -38,6 +38,10 @@ spec:
             # own or one named in `provider.existingSecret`.
             - name: PROVIDER_MODEL
               value: {{ required "provider.model is required" .Values.provider.model | quote }}
+            {{- /* Checked here rather than left to the pod: without either,
+                   the reference below names a Secret this chart never writes,
+                   and the container waits on it forever. */}}
+            {{- $_ := required "provider.apiKey or provider.existingSecret is required: the chat has no key to answer on" (or .Values.provider.apiKey .Values.provider.existingSecret) }}
             - name: PROVIDER_API_KEY
               valueFrom:
                 secretKeyRef:

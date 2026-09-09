@@ -213,6 +213,11 @@ class Chat:
         return bool(self.model)
 
     def parameter(self, prefix: str) -> str:
+        """The key's Parameter Store path.
+
+        The deploy workflow passes the path it checked exists, so the two
+        agree by construction; the default is for a synthesis by hand.
+        """
         return self.api_key_parameter or f"{prefix}/chat/provider-api-key"
 
     def environment(self) -> dict[str, str]:

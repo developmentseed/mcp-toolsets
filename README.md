@@ -576,7 +576,8 @@ the page spends that key. Two consequences worth stating plainly:
   Set the `MCP_AWS_CHAT_MODEL` repository variable.
   <!-- /target:aws -->
   Unset, which is how a repository made from this template starts, there is no
-  chat service at all. The key is then required rather than a second switch —
+  chat service at all, and clearing it takes a running one down on the next
+  deploy. The key is then required rather than a second switch —
   the deploy stops and names it, because two switches for one decision is how a
   chat goes missing with nothing said.
 - **Put something in front of it** — an auth proxy, an ingress annotation, an
@@ -608,14 +609,16 @@ and the deploy stops on the missing one by name.
 <!-- /target:k8s -->
 <!-- target:aws -->
 It is a service in the stack like any other, so it deploys with everything
-else. `MCP_AWS_CHAT_HOST` gives it a hostname and the `MCP_AWS_CHAT_MODEL`
-variable turns it on, exactly as on the other target. Its key is a Parameter
-Store SecureString at `/mcp-toolsets/<instance>/chat/provider-api-key`, which
-you create once; it is never CDK context, which would put it in the template.
-The deploy checks that parameter exists before it starts — synthesis is
-credential-free by rule, so the stack itself cannot know, and without the check
-the first sign would be a task that failed to start and rolled back. The load
-balancer holds sessions to one task so a conversation survives.
+else. The `MCP_AWS_CHAT_MODEL` variable turns it on, exactly as on the other
+target, and it is routed by hostname, so it also needs `MCP_AWS_INGRESS_HOST`
+(`MCP_AWS_CHAT_HOST` overrides the default `chat.<host>`). Its key is a
+Parameter Store SecureString at `/mcp-toolsets/<instance>/chat/provider-api-key`,
+which you create once; it is never CDK context, which would put it in the
+template. The deploy checks both before it starts, and a model with no host or
+no parameter stops the run by name — synthesis is credential-free by rule, so
+the stack itself cannot know, and without the check the first sign would be a
+task that failed to start and rolled back. The load balancer holds sessions to
+one task so a conversation survives.
 <!-- /target:aws -->
 
 Conversations are checkpointed per thread, **in the serving process's memory by

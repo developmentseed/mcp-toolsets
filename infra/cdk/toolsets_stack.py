@@ -168,9 +168,9 @@ class ToolsetsStack(Stack):
         """The hostname the chat answers on, or ``None`` if there is no chat.
 
         One predicate for three questions — the certificate's second name, the
-        listener rule, and the DNS record — because they have to agree. They
-        did not: a record was written for a host with no service behind it,
-        which resolves and lands on the index.
+        listener rule, and the DNS record — because they have to agree: a
+        record for a host with no rule behind it resolves and lands on the
+        index, which looks like a broken chat.
         """
         if not self.deployment.chat.enabled:
             return None

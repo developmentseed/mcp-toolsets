@@ -123,13 +123,25 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
       - name: Uninstall releases whose toolset directory is gone
+        env:
+          # The chat's switch, read here so that clearing it takes the release
+          # down. The chat job is merely skipped without a model, and a release
+          # nothing uninstalls keeps answering — and spending the key — with
+          # every appearance of being off.
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
           for release in $(helm list --namespace "$MCP_NAMESPACE" --short); do
             case "$release" in
               # The releases this workflow installs that are not toolsets. A
               # name here that stops being skipped is uninstalled on the next
               # deploy, because no toolsets/<name> directory will ever back it.
-              mcp-index | mcp-chat) continue ;;
+              mcp-index) continue ;;
+              mcp-chat)
+                if [ -z "$MCP_CHAT_MODEL" ]; then
+                  echo "Uninstalling $release: MCP_CHAT_MODEL is unset, so no chat"
+                  helm uninstall "$release" --namespace "$MCP_NAMESPACE"
+                fi
+                continue ;;
               mcp-*) toolset="${release#mcp-}" ;;
               *) continue ;;
             esac

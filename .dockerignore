@@ -1,0 +1,19 @@
+# What no build needs. Both Dockerfiles copy the whole tree into a builder
+# stage, so without this the daemon receives — and a builder layer keeps — the
+# local venv, node modules, build output and, worst, .env and any key file.
+.git
+.DS_Store
+.venv
+.env
+*-key
+kubeconfig*
+**/node_modules
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+build
+dist
+# target:aws
+cdk.out
+# /target:aws

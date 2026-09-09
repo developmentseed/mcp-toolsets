@@ -178,21 +178,34 @@ jobs:
           echo "file=image-tags.json" >> "$GITHUB_OUTPUT"
           cat image-tags.json
 
-      # The mirror of the Kubernetes side's check, and the reason this one is a
-      # step rather than a gate: synthesis is credential-free by rule, so the
-      # stack cannot know whether the parameter exists — it would find out when
-      # the task failed to start and the circuit breaker rolled it back, which
-      # says nothing about what to fix. Read without --with-decryption: this
-      # asks whether there is a key, and has no business seeing it.
-      - name: The model has a key to answer on
+      # A step rather than a gate, because synthesis is credential-free by rule:
+      # the stack cannot know whether the parameter exists, and would find out
+      # when the task failed to start and the circuit breaker rolled it back,
+      # which says nothing about what to fix.
+      - id: chat
+        name: The model has a host to answer on, and a key
         if: vars.MCP_AWS_CHAT_MODEL != ''
         env:
           # Through the environment rather than into the script text: a value
           # substituted into `run` becomes shell source, and a quote in it is
           # then a syntax error at best.
           MCP_AWS_CHAT_MODEL: ${{ vars.MCP_AWS_CHAT_MODEL }}
+          MCP_AWS_INGRESS_HOST: ${{ secrets.MCP_AWS_INGRESS_HOST }}
         run: |
+          # The chat is routed by hostname, and a stack with no domain has none
+          # to give it — it would deploy no chat and say nothing.
+          if [ -z "$MCP_AWS_INGRESS_HOST" ]; then
+            echo "::error::MCP_AWS_CHAT_MODEL names $MCP_AWS_CHAT_MODEL, but" \
+                 "there is no MCP_AWS_INGRESS_HOST secret, and the chat needs a" \
+                 "hostname of its own (chat.<host>, or MCP_AWS_CHAT_HOST). Set" \
+                 "the host, or clear the MCP_AWS_CHAT_MODEL variable to deploy" \
+                 "no chat."
+            exit 1
+          fi
+          # Handed to the stack as chatApiKeyParameter, so the path checked
+          # here and the one the task reads are one name rather than two.
           name="/mcp-toolsets/${MCP_AWS_INSTANCE}/chat/provider-api-key"
+          echo "parameter=$name" >> "$GITHUB_OUTPUT"
           # Without --with-decryption: this asks whether there is a key and has
           # no business seeing it. The two failures are told apart, because
           # "create the parameter" is bad advice for an expired token.
@@ -223,6 +236,9 @@ jobs:
           # the key it spends lives in Parameter Store and is read at task
           # start, never passed through here.
           MCP_AWS_CHAT_MODEL: ${{ vars.MCP_AWS_CHAT_MODEL }}
+          # The parameter the step above found; empty when that step did not
+          # run, and then not passed.
+          MCP_AWS_CHAT_KEY_PARAMETER: ${{ steps.chat.outputs.parameter }}
           MCP_AWS_HOSTED_ZONE_ID: ${{ secrets.MCP_AWS_HOSTED_ZONE_ID }}
           MCP_AWS_CERTIFICATE_ARN: ${{ secrets.MCP_AWS_CERTIFICATE_ARN }}
           MCP_AWS_REGISTRY_SECRET_ARN: ${{ secrets.MCP_AWS_REGISTRY_SECRET_ARN }}
@@ -240,6 +256,7 @@ jobs:
             ${MCP_AWS_INGRESS_HOST:+-c host="$MCP_AWS_INGRESS_HOST"} \
             ${MCP_AWS_CHAT_HOST:+-c chatHost="$MCP_AWS_CHAT_HOST"} \
             ${MCP_AWS_CHAT_MODEL:+-c chatModel="$MCP_AWS_CHAT_MODEL"} \
+            ${MCP_AWS_CHAT_KEY_PARAMETER:+-c chatApiKeyParameter="$MCP_AWS_CHAT_KEY_PARAMETER"} \
             ${MCP_AWS_HOSTED_ZONE_ID:+-c hostedZoneId="$MCP_AWS_HOSTED_ZONE_ID"} \
             ${MCP_AWS_CERTIFICATE_ARN:+-c certificateArn="$MCP_AWS_CERTIFICATE_ARN"} \
             ${MCP_AWS_REGISTRY_SECRET_ARN:+-c registrySecretArn="$MCP_AWS_REGISTRY_SECRET_ARN"} \
