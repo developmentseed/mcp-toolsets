@@ -200,11 +200,15 @@ jobs:
       - name: The model has a key to answer on
         env:
           PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+          # Through the environment rather than into the script text: a value
+          # substituted into `run` becomes shell source, and a quote in it is
+          # then a syntax error at best.
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
           if [ -z "$PROVIDER_API_KEY" ]; then
-            echo "::error::MCP_CHAT_MODEL names ${{ vars.MCP_CHAT_MODEL }}, but" \
-                 "there is no MCP_PROVIDER_API_KEY secret to answer on it." \
-                 "Set it (gh secret set MCP_PROVIDER_API_KEY), or clear the" \
+            echo "::error::MCP_CHAT_MODEL names $MCP_CHAT_MODEL, but there is" \
+                 "no MCP_PROVIDER_API_KEY secret to answer on it. Set it" \
+                 "(gh secret set MCP_PROVIDER_API_KEY), or clear the" \
                  "MCP_CHAT_MODEL variable to deploy no chat."
             exit 1
           fi

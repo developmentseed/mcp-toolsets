@@ -248,6 +248,7 @@ class ToolsetsStack(Stack):
         environment: dict[str, str],
         command: list[str] | None = None,
         secrets: dict[str, str] | None = None,
+        grace: Duration | None = None,
     ) -> ecs.FargateService:
         """One Fargate service, registered in Cloud Map under its own name."""
         task_definition = ecs.FargateTaskDefinition(
@@ -295,6 +296,12 @@ class ToolsetsStack(Stack):
             # image. The security group is what keeps it private.
             assign_public_ip=not self.deployment.network.bring_your_own,
             cloud_map_options=ecs.CloudMapOptions(name=f"mcp-{component}"),
+            # How long a new task may fail its load balancer check before ECS
+            # gives up on it. `None` keeps the library's 60s, which is ample
+            # for a toolset that serves the moment it starts; a service that
+            # connects to something else first needs longer, or its own startup
+            # is read as a failed deploy.
+            health_check_grace_period=grace,
             # A task inherits nothing by default, so without this the running
             # thing — the one that appears in a cost report and the one someone
             # finds when asking who owns this — is the only untagged part of
@@ -455,6 +462,10 @@ class ToolsetsStack(Stack):
             cpu=512,
             memory=1024,
             port=CHAT_PORT,
+            # Nothing answers on this port until the agent has connected to
+            # every toolset — uvicorn opens the socket after the lifespan, so
+            # the check is refused rather than answered 503 until then.
+            grace=Duration.minutes(3),
             environment={
                 # The index registers under its component name, so this has to
                 # be derived rather than written out: naming it by hand is how
@@ -484,10 +495,10 @@ class ToolsetsStack(Stack):
             priority=CHAT_RULE_PRIORITY,
             conditions=[elbv2.ListenerCondition.host_headers([chat_host])],
             stickiness_cookie_duration=Duration.hours(8),
-            # Readiness, not the page: the task serves its page as soon as the
-            # process is up, and stays unable to answer until it has connected
-            # to every toolset. A check on "/" would put it in service while
-            # every question it was sent would 503.
+            # Readiness, not the page: both answer only once the agent is
+            # built, but "/" would also answer 200 from a deployment serving a
+            # page with no agent behind it, and this check exists to say the
+            # task can answer questions.
             health_check=elbv2.HealthCheck(
                 path="/health/readiness",
                 healthy_http_codes="200",

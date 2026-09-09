@@ -568,11 +568,16 @@ in the transcript.
 at startup from `PROVIDER_MODEL` and `PROVIDER_API_KEY`, so anyone who can open
 the page spends that key. Two consequences worth stating plainly:
 
-- **Naming a model is what deploys a chat**, on both targets: the
-  `MCP_CHAT_MODEL` variable on Kubernetes, `MCP_AWS_CHAT_MODEL` on AWS. Unset,
-  which is how a repository made from this template starts, there is no chat
-  service at all. The key is then required rather than a second switch — the
-  deploy stops and names it, because two switches for one decision is how a
+- **Naming a model is what deploys a chat.**
+  <!-- target:k8s -->
+  Set the `MCP_CHAT_MODEL` repository variable.
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+  Set the `MCP_AWS_CHAT_MODEL` repository variable.
+  <!-- /target:aws -->
+  Unset, which is how a repository made from this template starts, there is no
+  chat service at all. The key is then required rather than a second switch —
+  the deploy stops and names it, because two switches for one decision is how a
   chat goes missing with nothing said.
 - **Put something in front of it** — an auth proxy, an ingress annotation, an
   allowlist — unless leaving the spend open is a decision you have made.

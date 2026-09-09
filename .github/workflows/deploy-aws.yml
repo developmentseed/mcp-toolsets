@@ -186,15 +186,32 @@ jobs:
       # asks whether there is a key, and has no business seeing it.
       - name: The model has a key to answer on
         if: vars.MCP_AWS_CHAT_MODEL != ''
+        env:
+          # Through the environment rather than into the script text: a value
+          # substituted into `run` becomes shell source, and a quote in it is
+          # then a syntax error at best.
+          MCP_AWS_CHAT_MODEL: ${{ vars.MCP_AWS_CHAT_MODEL }}
         run: |
           name="/mcp-toolsets/${MCP_AWS_INSTANCE}/chat/provider-api-key"
-          if ! aws ssm get-parameter --name "$name" --query 'Parameter.Version' >/dev/null 2>&1; then
-            echo "::error::MCP_AWS_CHAT_MODEL names ${{ vars.MCP_AWS_CHAT_MODEL }}," \
-                 "but $name does not exist. Create it (aws ssm put-parameter" \
-                 "--name $name --type SecureString --value <key>), or clear the" \
-                 "MCP_AWS_CHAT_MODEL variable to deploy no chat."
-            exit 1
+          # Without --with-decryption: this asks whether there is a key and has
+          # no business seeing it. The two failures are told apart, because
+          # "create the parameter" is bad advice for an expired token.
+          if problem=$(aws ssm get-parameter --name "$name" \
+                --query 'Parameter.Version' 2>&1 >/dev/null); then
+            exit 0
           fi
+          case "$problem" in
+            *ParameterNotFound*)
+              echo "::error::MCP_AWS_CHAT_MODEL names $MCP_AWS_CHAT_MODEL, but" \
+                   "$name does not exist. Create it (aws ssm put-parameter" \
+                   "--name $name --type SecureString --value <key>), or clear" \
+                   "the MCP_AWS_CHAT_MODEL variable to deploy no chat."
+              ;;
+            *)
+              echo "::error::could not check $name: $problem"
+              ;;
+          esac
+          exit 1
 
       - name: Deploy the stack
         env:

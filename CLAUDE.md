@@ -36,8 +36,13 @@ deployment target — see README), the `Dockerfile`, the workflows and
   `ui` job, and this script rebuild them.
 - The hosted chat is the runtime's `mcp_agent_api`, page included: the web
   client ships inside the wheel, so nothing here builds or vendors a frontend
-  and `Dockerfile.chat` runs `uvicorn`. Its text is `MCP_AGENT_UI_*`, set in
-  the chart's values or in `infra/cdk/config.py`'s `Chat`.
+  and `Dockerfile.chat` runs `uvicorn`. Its text is `MCP_AGENT_UI_*`, set
+  <!-- target:k8s -->
+  in `infra/k8s/charts/mcp-chat/values.yaml`.
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+  in `Chat`'s defaults in `infra/cdk/config.py`.
+  <!-- /target:aws -->
 
 ## Safety
 
