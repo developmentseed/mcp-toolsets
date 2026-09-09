@@ -133,7 +133,8 @@ authority on everything it exposes, and stays current when this doesn't:
 | `mcp_runtime` | **Required.** Serves a toolset's `TOOLS` as a stateless streamable-HTTP MCP server with a `/health` route for k8s probes, and its `VIEWS` as `ui://` resources — `mcp-serve` for one toolset, `mcp-serve-local` for all of them at once. Also runs the directory service (`mcp-index`). |
 | `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
 | `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
-| `mcp_agent` | **Optional example chat** (`mcp-agent` / `mcp-agent-web`) that discovers every server behind an index URL and drives their tools. `mcp-agent-web` needs the `[web]` extra; `[agent]` alone gives `build_agent`, `run_turn` and the host helpers without Chainlit, for a frontend of your own. Drop the extra from the pin if you want neither. |
+| `mcp_agent` | **The agent.** Discovers every server behind an index URL and drives their tools — `mcp-agent` is an interactive terminal chat, and `build_agent`/`run_turn` are the same thing for a host of your own. |
+| `mcp_agent_api` | **The hosted chat.** That agent over HTTP as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) events, plus the web client that renders them — streamed answers, tool calls as they run, receipts beside them, and a session-state panel. The client ships inside the wheel, so `Dockerfile.chat` runs `uvicorn` and builds no frontend. Needs the `[api]` extra, which is what the root pin takes. |
 | `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a parameter `NotAuthored` is the accelerator on top — see below. |
 
 [session-state]: https://github.com/developmentseed/mcp-toolsets-runtime/blob/main/docs/SESSION-STATE.md
@@ -359,7 +360,7 @@ Verify locally: `TOOLSET=my-toolset uv run mcp-serve`, then `tools/list`
 ## Toolset UI views
 
 A tool can ship a **view**: a small frontend component (a map, a gallery, a
-chart) that an MCP Apps host — Claude, ChatGPT, or the bundled Chainlit agent —
+chart) that an MCP Apps host — Claude, ChatGPT, or this repo's own hosted chat —
 renders in a sandboxed iframe and feeds the tool's `structuredContent`. The runtime stays pure-Python: a view is a build-time HTML
 bundle served as an MCP resource; nothing new executes at call time. Views are
 **progressive enhancement** — the tool's `message` and structured data still
@@ -401,8 +402,8 @@ Given that, the runtime does two standard-MCP things: it serves each view as a
 resource `ui://<toolset>/<view_id>` and stamps the owning tool's `_meta` with
 that URI. Because that follows the [MCP Apps][ext-apps] standard, any MCP Apps
 host renders the same bundle unchanged — Claude, ChatGPT, Goose, VS Code — and
-so does the bundled Chainlit agent, whose `McpView.jsx` element implements the
-host end of the identical protocol.
+so does the hosted chat, whose transcript opens each view in a frame and speaks
+the host end of the identical protocol.
 
 [mcp-view]: https://www.npmjs.com/package/@developmentseed/mcp-view
 [ext-apps]: https://github.com/modelcontextprotocol/ext-apps
@@ -424,20 +425,13 @@ and calls the next tool. `toolsets/stac-explorer` is a worked example — a
 collection gallery whose "Show on map" button drives a second tool that renders
 the selected data on a map.
 
-### Viewing them in the bundled Chainlit agent
+### Viewing them in the hosted chat
 
-External MCP Apps hosts need nothing from you beyond the contract above.
-Chainlit isn't one out of the box, so the runtime ships the host-side element
-that makes it one, and you install it into the app root once (it lands in the
-git-ignored `public/elements/`):
-
-```sh
-uv run mcp-agent install-elements    # writes public/elements/McpView.jsx
-```
-
-Re-run it after a runtime upgrade to pick up the new element. Nothing is written
-at runtime, so this works on a read-only filesystem; `mcp-agent-web` starts
-without it but warns and won't render views.
+Nothing to install. The client the runtime serves is an MCP Apps host itself:
+when a tool that declares a view is called, the receipt for that call carries
+the `ui://` URI, and the transcript fetches the bundle from the API and hands
+it the tool's structured content. A view's `sendMessage(...)` starts the next
+turn, exactly as it would in Claude.
 
 ## Removing a toolset
 
@@ -514,11 +508,15 @@ kubectl -n __MCP_NAMESPACE__ port-forward svc/mcp-hello 8000:8000
 uv run mcp-cli list
 ```
 
-- **Optional secret**: `MCP_CHAT_HOST` — a hostname for the hosted chat UI (see
-  [Hosted chat](#hosted-chat-bring-your-own-model)). When `MCP_INGRESS_HOST` is
-  set, the deploy builds `Dockerfile.chat` and installs `infra/k8s/charts/mcp-chat` on
-  this host (default `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and
-  a TLS cert (`<namespace>-chat-tls`, issued by cert-manager if configured).
+- **Optional variable**: `MCP_CHAT_MODEL` — a `provider:model` string. Naming
+  one is what deploys the hosted chat at all; unset, no chat service exists
+  (see [Hosted chat](#hosted-chat)).
+- **Optional secret**: `MCP_PROVIDER_API_KEY` — the key that model answers on.
+  Required once `MCP_CHAT_MODEL` is set: the deploy fails naming this secret
+  rather than skipping, because a deployment that named a model wanted a chat.
+- **Optional secret**: `MCP_CHAT_HOST` — a hostname for the chat (default
+  `chat.<MCP_INGRESS_HOST>`). It needs its own DNS record and a TLS cert
+  (`<namespace>-chat-tls`, issued by cert-manager if configured).
   <!-- /target:k8s -->
   <!-- target:aws -->
 - **deploy-aws.yml** (main): detects changed toolsets
@@ -551,38 +549,86 @@ uv run mcp-cli list
 
 Build an image locally with `docker build --build-arg TOOLSET=hello .`.
 
-## Hosted chat (bring your own model)
+## Hosted chat
 
-The runtime's `mcp_agent` Chainlit UI can also run as a public web app over the
-deployed toolsets, at `chat.<shared-domain>`. It is **bring-your-own-model**:
-the deployment holds no provider key. Each user opens ⚙ settings and enters a
-`provider:model` and their own API key (and any per-toolset credential headers);
-the key lives only in that browser session — never sent to the model, logged, or
-stored server-side — so exposing the host exposes no server-held secret and the
-model spend is the user's own. The image (`Dockerfile.chat`) bundles a set of
-providers (`anthropic`, `openai`, `google-genai`, `mistralai`) so any of them
-works without a rebuild; the workspace itself stays provider-agnostic.
+A web chat over the deployed toolsets, at `chat.<shared-domain>`. It is the
+runtime's `mcp_agent_api` — the agent over HTTP as AG-UI events — and the web
+client that ships inside that wheel, both in one image (`Dockerfile.chat`) on
+one port. Nothing here builds a frontend.
+
+What it shows is the argument for these toolsets rather than a plain chat
+window: the answer streams in, each tool call appears as it runs, and beside it
+sits a receipt saying what that call was given and where each argument came
+from — the model, or a value another tool published. A panel lists what the
+tools exchanged without the model reading it, and clicking a key fetches the
+payload the conversation never carried. A tool with a view opens it in a frame
+in the transcript.
+
+**The model is the deployment's, and so is the bill.** The agent is built once
+at startup from `PROVIDER_MODEL` and `PROVIDER_API_KEY`, so anyone who can open
+the page spends that key. Two consequences worth stating plainly:
+
+- **Naming a model is what deploys a chat.**
+  <!-- target:k8s -->
+  Set the `MCP_CHAT_MODEL` repository variable.
+  <!-- /target:k8s -->
+  <!-- target:aws -->
+  Set the `MCP_AWS_CHAT_MODEL` repository variable.
+  <!-- /target:aws -->
+  Unset, which is how a repository made from this template starts, there is no
+  chat service at all, and clearing it takes a running one down on the next
+  deploy. The key is then required rather than a second switch —
+  the deploy stops and names it, because two switches for one decision is how a
+  chat goes missing with nothing said.
+- **Put something in front of it** — an auth proxy, an ingress annotation, an
+  allowlist — unless leaving the spend open is a decision you have made.
+
+The image bundles the `anthropic`, `openai`, `google-genai` and `mistralai`
+drivers, so `PROVIDER_MODEL` picks one without a rebuild and the workspace
+itself stays provider-agnostic. A visitor can still supply *toolset*
+credentials: a toolset that declares a credential header gets a field in the
+page's keys panel, and what is typed there beats the deployment's own value for
+that header.
+
+The page's own text — its title, an optional greeting, and the example
+questions offered before anyone has typed — is `MCP_AGENT_UI_*`, set
+<!-- target:k8s -->
+in `infra/k8s/charts/mcp-chat/values.yaml`.
+<!-- /target:k8s -->
+<!-- target:aws -->
+in `Chat`'s defaults in `infra/cdk/config.py`.
+<!-- /target:aws -->
+With no greeting the page opens on what the agent is actually connected to,
+which stays true as toolsets come and go.
 
 <!-- target:k8s -->
-It deploys automatically alongside the index when `MCP_INGRESS_HOST` is set (a
-shared-code change or a `workflow_dispatch` run).
+It deploys alongside the index when `MCP_INGRESS_HOST` and the
+`MCP_CHAT_MODEL` variable are set (on a shared-code change or a
+`workflow_dispatch` run). The `MCP_PROVIDER_API_KEY` secret is then required,
+and the deploy stops on the missing one by name.
 <!-- /target:k8s -->
 <!-- target:aws -->
 It is a service in the stack like any other, so it deploys with everything
-else; `MCP_AWS_CHAT_HOST` gives it a hostname of its own, and the load balancer
-holds sessions to one task so a conversation survives.
+else. The `MCP_AWS_CHAT_MODEL` variable turns it on, exactly as on the other
+target, and it is routed by hostname, so it also needs `MCP_AWS_INGRESS_HOST`
+(`MCP_AWS_CHAT_HOST` overrides the default `chat.<host>`). Its key is a
+Parameter Store SecureString at `/mcp-toolsets/<instance>/chat/provider-api-key`,
+which you create once; it is never CDK context, which would put it in the
+template. The deploy checks both before it starts, and a model with no host or
+no parameter stops the run by name — synthesis is credential-free by rule, so
+the stack itself cannot know, and without the check the first sign would be a
+task that failed to start and rolled back. The load balancer holds sessions to
+one task so a conversation survives.
 <!-- /target:aws -->
-There is no built-in auth —
-BYOM removes the shared-key abuse risk, but put an auth proxy in front (or
-enable Chainlit auth) if you need to restrict who can use it.
 
 Conversations are checkpointed per thread, **in the serving process's memory by
-default** — so a restart, a redeploy or a second replica loses them. That is fine for demos and is why nothing extra is deployed for it. To
-keep conversations, point `MCP_AGENT_CHECKPOINT` at a PostgreSQL URL and add the
-runtime's `[checkpointing-postgres]` extra to the chat image. The same
-per-thread state also carries what the toolsets published, so if you do adopt
-`mcp_state`, where conversations live becomes a real decision rather than a
-detail.
+default** — so a restart, a redeploy or a second replica loses them. That is
+fine for demos and is why nothing extra is deployed for it, and why the chat
+runs as a single instance. To keep conversations, point `MCP_AGENT_CHECKPOINT`
+at a PostgreSQL URL and add the runtime's `[checkpointing-postgres]` extra to
+the chat image. The same per-thread state also carries what the toolsets
+published, so if you do adopt `mcp_state`, where conversations live becomes a
+real decision rather than a detail.
 
 <!-- target:k8s -->
 ## Kubernetes cluster setup
@@ -738,12 +784,16 @@ and the deployed domain are the same command with a different argument.
 
 Any `init_chat_model` provider works (`openai:`, `anthropic:`, `mistralai:`,
 …) — switching is a `PROVIDER_MODEL` change plus that provider's package. The
-same agent is available as a Chainlit chat UI: `uv run mcp-agent-web` serves it
-at `http://localhost:8080`. It is **bring-your-own-model** — set the model and
-API key in ⚙ settings, or pre-fill them from the environment/.env
-(`PROVIDER_MODEL`, `PROVIDER_API_KEY`); `MCP_URL` (which index or server to chat
-with) and `CHAINLIT_PORT` also come from there. See
-[Hosted chat](#hosted-chat-bring-your-own-model) to run it as a public web app.
+same agent is a web chat over HTTP, which is the image this repo deploys and
+also the fastest local loop once a view or a receipt is what you are looking at:
+
+```sh
+MCP_URL=http://localhost:8000/ uv run uvicorn mcp_agent_api.app:app --port 8080
+```
+
+That serves the API and the page it comes with on one port; `PROVIDER_MODEL`
+and `PROVIDER_API_KEY` are read from the environment or `.env` as above. See
+[Hosted chat](#hosted-chat) for running it as a public web app.
 
 Each Helm release owns its own Ingress for the same host and the controller
 merges them, so the domain's routing table tracks deploys with no central
@@ -1044,10 +1094,11 @@ with user_credentials({"x-demo-token": the_users_token}):
     result = await agent.ainvoke(...)
 ```
 
-The Chainlit UI builds a settings field (⚙ by the message box) for every
-credential header the connected toolsets advertise and applies the values
-per message — so one long-lived agent process serves many users, each with
-their own credentials.
+The hosted chat does the same for a browser: `GET /connections` reports every
+credential header the connected toolsets declared, the page offers a field per
+header, and each question carries its own — so one long-lived agent process
+serves many users, each with their own credentials. The route also says whether
+the deployment already holds a value for a header, and a visitor's own beats it.
 
 ```sh
 uv run mcp-cli call whoami \

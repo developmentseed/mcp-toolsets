@@ -35,6 +35,7 @@ from typing import Any
 import aws_cdk as cdk
 
 from infra.cdk.config import (
+    Chat,
     ConfigError,
     Deployment,
     Domain,
@@ -138,6 +139,13 @@ def build(app: cdk.App) -> cdk.App:
             vpc_id=_optional(app, "vpcId"),
             subnet_ids=_list(app, "subnetIds"),
             availability_zones=_list(app, "availabilityZones"),
+        ),
+        # Only the model comes from context, and it is what turns the chat on.
+        # The key is a Parameter Store path read at task start, and the page's
+        # own text is committed in `Chat`'s defaults — see the class.
+        chat=Chat(
+            model=_optional(app, "chatModel") or "",
+            api_key_parameter=_optional(app, "chatApiKeyParameter") or "",
         ),
     )
     ToolsetsStack(app, instance, deployment=deployment)

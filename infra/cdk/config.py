@@ -175,6 +175,70 @@ class Domain:
 
 
 @dataclass(frozen=True)
+class Chat:
+    """The hosted chat: the model it answers on, and what its page says.
+
+    Nothing is deployed without ``model``, and that is the switch on both of
+    this repo's targets rather than an AWS quirk: it is the one input a
+    credential-free synthesis and a Helm deploy can both see. The chat runs
+    every visitor's questions on one model and bills them to this account, so
+    a deployment turns it on deliberately or not at all — an empty model is
+    not a misconfiguration, it is the default.
+
+    The key is never here and never in context, which would put it in a
+    CloudFormation template. It is read at task start from a Parameter Store
+    SecureString, the same way a toolset's own secrets are, and creating that
+    parameter is the deploying account's job — the deploy workflow checks it
+    exists before deploying a stack that names it, because nothing here can.
+
+    The rest is what the page says about itself. It is committed rather than
+    passed in because it is prose about *this* deployment, reviewed like any
+    other text here — the equivalent of the chart's values file on the other
+    target. Leave ``greeting`` empty and the page opens on what the agent is
+    actually connected to, which stays true as toolsets come and go.
+    """
+
+    model: str = ""
+    #: Parameter Store path holding the provider key. Defaults under the
+    #: instance's own prefix, beside every other secret it reads.
+    api_key_parameter: str = ""
+    title: str = "MCP Toolsets"
+    tagline: str = ""
+    greeting: str = ""
+    examples: tuple[str, ...] = ()
+    accent: str = ""
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.model)
+
+    def parameter(self, prefix: str) -> str:
+        """The key's Parameter Store path.
+
+        The deploy workflow passes the path it checked exists, so the two
+        agree by construction; the default is for a synthesis by hand.
+        """
+        return self.api_key_parameter or f"{prefix}/chat/provider-api-key"
+
+    def environment(self) -> dict[str, str]:
+        """The ``MCP_AGENT_UI_*`` variables the runtime's client reads.
+
+        Empty values are left out rather than set empty: the client falls back
+        to its own defaults on an unset variable, and to nothing at all on one
+        set to "".
+        """
+        values = {
+            "MCP_AGENT_UI_TITLE": self.title,
+            "MCP_AGENT_UI_TAGLINE": self.tagline,
+            "MCP_AGENT_UI_GREETING": self.greeting,
+            # One per line; the runtime reads lines or a JSON array.
+            "MCP_AGENT_UI_EXAMPLES": "\n".join(self.examples),
+            "MCP_AGENT_UI_ACCENT": self.accent,
+        }
+        return {name: value for name, value in values.items() if value}
+
+
+@dataclass(frozen=True)
 class Network:
     """A network the stack builds, or one it is handed.
 
@@ -220,6 +284,7 @@ class Deployment:
     registry_secret_arn: str | None = None
     domain: Domain = field(default_factory=Domain)
     network: Network = field(default_factory=Network)
+    chat: Chat = field(default_factory=Chat)
     #: Where per-toolset secrets live, and the prefix the task role can read.
     parameter_prefix: str = ""
 

@@ -1,31 +1,37 @@
-# The hosted Chainlit chat UI (mcp-agent-web). Separate from the toolset
-# Dockerfile: this image runs the agent, not mcp-serve, and bundles a set of
-# chat-model providers so users can bring their own model. No provider API key
-# is baked in — each user supplies their own in the UI at runtime (BYOM).
+# The hosted chat UI: the runtime's agent over HTTP, and the web client it
+# serves. Separate from the toolset Dockerfile — this image runs the agent, not
+# mcp-serve — and it bundles a set of chat-model providers so one image can run
+# whichever `PROVIDER_MODEL` names.
+#
+# Unlike the Chainlit host this replaces, the model is the *deployment's*: the
+# agent is built once at startup from PROVIDER_MODEL and PROVIDER_API_KEY, and
+# every visitor spends that key. Nothing here holds one — both deployment
+# targets pass it in, and neither deploys this service at all without one.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 COPY . .
-# The chat serves no toolset — it needs mcp_agent, which is the runtime's
-# [agent] extra, at the version uv.lock already pins (the `chat` group).
+# The chat serves no toolset — it needs mcp_agent_api, which is the runtime's
+# [api] extra, at the version uv.lock already pins (the `chat` group). The web
+# client is inside that wheel, so no node runs here and nothing is copied in.
 RUN uv sync --frozen --no-dev --no-editable --only-group chat
 # Provider packages are installed on top of the locked venv rather than added to
-# the workspace, so the repo stays provider-agnostic while the hosted image can
-# serve any of these via PROVIDER_MODEL=<provider>:<model>. Bump as needed.
+# the workspace, so the repo stays provider-agnostic while the image can serve
+# any of these via PROVIDER_MODEL=<provider>:<model>. Bump as needed.
 RUN uv pip install --python /app/.venv \
         "langchain-anthropic>=1.1,<2" \
         "langchain-openai>=1.1,<2" \
         "langchain-google-genai>=3,<4" \
         "langchain-mistralai>=1.1,<2"
-# Chainlit resolves custom elements (the McpView iframe host) from ./public.
-# The element ships inside mcp-toolsets-runtime, so take it from the installed
-# package at build time rather than vendoring a copy in this repo.
-RUN /app/.venv/bin/mcp-agent install-elements /app/public/elements
 
 FROM python:3.12-slim-bookworm
-ENV CHAINLIT_HOST=0.0.0.0 CHAINLIT_PORT=8080 PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/public/ /app/public/
 EXPOSE 8080
-CMD ["mcp-agent-web"]
+# One port for the page and the API, because they are one application: the
+# client is served from the same origin as the routes it calls, so there is no
+# cross-origin configuration to get wrong. 8080 is fixed rather than read from
+# the environment — both targets publish this port, and an exec-form CMD does
+# no shell expansion anyway.
+CMD ["uvicorn", "mcp_agent_api.app:app", "--host", "0.0.0.0", "--port", "8080"]

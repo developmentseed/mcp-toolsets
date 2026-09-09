@@ -7,6 +7,10 @@ image:
 imagePullSecrets:
   - ghcr-pull
 
+# One, and only one. Conversations live in the task's memory (the runtime's
+# default checkpointer is in-process), so a second replica answers a reload
+# with someone else's empty thread. A durable checkpointer is what lifts this
+# — see the runtime's [checkpointing-postgres] extra.
 replicas: 1
 
 resources:
@@ -15,7 +19,7 @@ resources:
     memory: 256Mi
   limits:
     cpu: 500m
-    memory: 512Mi
+    memory: 1Gi
 
 service:
   port: 8080
@@ -25,10 +29,47 @@ service:
 # ingress URLs, so the chat reaches tools over the ingress (no extra wiring).
 mcpUrl: "http://mcp-index:8000/"
 
+# The model every visitor's questions run on, and the key it is billed to.
+# There is no bring-your-own-model here: the agent is built once at startup.
+#
+# `model` is a provider:model string for LangChain's init_chat_model, and the
+# image bundles the drivers for anthropic, openai, google-genai and mistralai.
+#
+# The deploy sets `model` from the MCP_CHAT_MODEL repo variable, and naming one
+# there is what deploys this chart at all. Set here, it is the default for
+# anyone installing the chart by hand.
+#
+# The key arrives one of two ways, and never in a committed file:
+#   apiKey          — a value (the deploy passes the MCP_PROVIDER_API_KEY
+#                     secret), which this chart puts in a Secret of its own
+#   existingSecret  — the name of a Secret you manage, with the key in
+#                     `existingSecretKey`
+# The deploy refuses to run with a model and no key, rather than installing a
+# release that cannot answer.
+provider:
+  model: ""
+  apiKey: ""
+  existingSecret: ""
+  existingSecretKey: provider-api-key
+
+# What the page says about itself. Text and one colour, read by the client the
+# runtime serves. Everything here is optional: with no greeting the page opens
+# on what the agent is actually connected to, which is right more often than a
+# sentence written once and left.
+ui:
+  title: "MCP Toolsets"
+  tagline: ""
+  greeting: ""
+  # Questions offered as buttons on the opening screen. A deployment knows what
+  # its own toolsets can answer; the client cannot guess it.
+  examples: []
+  accent: ""
+
 ingress:
   # Hostname for the chat UI — a dedicated name, e.g. chat.<shared-domain>.
-  # There is NO provider key here: the model is bring-your-own, set per user in
-  # the UI, so exposing this host does not expose a server-held secret.
+  # This host reaches a model the deployment pays for, so put authentication in
+  # front of it (an ingress annotation, or an authenticating proxy) unless the
+  # spend is acceptable to leave open.
   host: ""
   className: nginx
   # Name of the TLS Secret covering ingress.host. Empty means plain HTTP.
@@ -37,7 +78,11 @@ ingress:
   # Secret is created some other way.
   clusterIssuer: letsencrypt
   annotations:
-    # Chainlit uses a WebSocket (Socket.IO) for the chat stream; keep the
-    # upstream connection open well past the default 60s idle timeout.
+    # A turn is a Server-Sent Events stream that stays open for as long as the
+    # model takes, so the upstream connection outlives the default 60s idle
+    # timeout.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # And nothing may sit on the stream: buffering a token stream holds every
+    # token until the turn ends, which looks exactly like a hung chat.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"

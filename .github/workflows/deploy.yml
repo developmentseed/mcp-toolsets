@@ -123,13 +123,25 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
       - name: Uninstall releases whose toolset directory is gone
+        env:
+          # The chat's switch, read here so that clearing it takes the release
+          # down. The chat job is merely skipped without a model, and a release
+          # nothing uninstalls keeps answering — and spending the key — with
+          # every appearance of being off.
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
           for release in $(helm list --namespace "$MCP_NAMESPACE" --short); do
             case "$release" in
               # The releases this workflow installs that are not toolsets. A
               # name here that stops being skipped is uninstalled on the next
               # deploy, because no toolsets/<name> directory will ever back it.
-              mcp-index | mcp-chat) continue ;;
+              mcp-index) continue ;;
+              mcp-chat)
+                if [ -z "$MCP_CHAT_MODEL" ]; then
+                  echo "Uninstalling $release: MCP_CHAT_MODEL is unset, so no chat"
+                  helm uninstall "$release" --namespace "$MCP_NAMESPACE"
+                fi
+                continue ;;
               mcp-*) toolset="${release#mcp-}" ;;
               *) continue ;;
             esac
@@ -186,13 +198,32 @@ jobs:
 
   chat:
     needs: detect
-    # The hosted BYOM chat UI. Gated like the index (shared code selects all
-    # toolsets; docs-only pushes skip). No provider secret is deployed — the
-    # model is bring-your-own, entered per user in the UI.
-    if: needs.detect.outputs.ingress == 'true' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
+    # The hosted chat UI: the runtime's agent over HTTP and the web client it
+    # serves. Gated like the index (shared code selects all toolsets; docs-only
+    # pushes skip), and on naming a model — which is what turns the chat on,
+    # here and on the AWS target, because it is the one input both can see.
+    # The key it spends is checked below rather than gated on: a deployment
+    # that named a model and forgot the key wanted a chat, and silence would
+    # leave it wondering where it went.
+    if: needs.detect.outputs.ingress == 'true' && vars.MCP_CHAT_MODEL != '' && needs.detect.outputs.toolsets != '[]' && needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: The model has a key to answer on
+        env:
+          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+          # Through the environment rather than into the script text: a value
+          # substituted into `run` becomes shell source, and a quote in it is
+          # then a syntax error at best.
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
+        run: |
+          if [ -z "$PROVIDER_API_KEY" ]; then
+            echo "::error::MCP_CHAT_MODEL names $MCP_CHAT_MODEL, but there is" \
+                 "no MCP_PROVIDER_API_KEY secret to answer on it. Set it" \
+                 "(gh secret set MCP_PROVIDER_API_KEY), or clear the" \
+                 "MCP_CHAT_MODEL variable to deploy no chat."
+            exit 1
+          fi
       - id: image
         name: Compute image name (ghcr requires lowercase)
         run: echo "repository=ghcr.io/${GITHUB_REPOSITORY@L}/mcp-chat" >> "$GITHUB_OUTPUT"
@@ -223,11 +254,24 @@ jobs:
           # Optional override; defaults to chat.<shared-domain>. Needs its own
           # DNS record and (with cert-manager) a cert for the chat host.
           MCP_CHAT_HOST: ${{ secrets.MCP_CHAT_HOST }}
+          # The model, and the key it is billed to. The key is a secret; the
+          # model is not, so it is a variable — and it is the variable this job
+          # is gated on, so it is always set by the time we get here.
+          PROVIDER_API_KEY: ${{ secrets.MCP_PROVIDER_API_KEY }}
+          MCP_CHAT_MODEL: ${{ vars.MCP_CHAT_MODEL }}
         run: |
           chat_host="${MCP_CHAT_HOST:-chat.$MCP_INGRESS_HOST}"
+          # --set-file, not --set: helm reads commas in a --set value as
+          # separators, and an API key containing one would arrive truncated
+          # and be wrong in a way that looks like a rejected key. printf
+          # rather than echo, because a trailing newline would go into the
+          # Secret and travel out on the Authorization header.
+          printf '%s' "$PROVIDER_API_KEY" > "$RUNNER_TEMP/provider-key"
           helm upgrade --install mcp-chat infra/k8s/charts/mcp-chat \
             --namespace "$MCP_NAMESPACE" \
             --set image.repository="${{ steps.image.outputs.repository }}" \
             --set image.tag="${{ github.sha }}" \
             --set ingress.host="$chat_host" \
-            --set ingress.tlsSecret=${MCP_NAMESPACE}-chat-tls
+            --set ingress.tlsSecret=${MCP_NAMESPACE}-chat-tls \
+            --set provider.model="$MCP_CHAT_MODEL" \
+            --set-file provider.apiKey="$RUNNER_TEMP/provider-key"

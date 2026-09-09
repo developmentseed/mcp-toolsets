@@ -23,28 +23,75 @@ spec:
       containers:
         - name: mcp-chat
           image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
-          command: [mcp-agent-web]
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              # Fixed, not `service.port`: the image serves 8080 and takes no
+              # port setting, so tying this to the Service's port would let a
+              # changed value point the probes and the Service at a port
+              # nothing listens on. The Service targets this port by name.
+              containerPort: 8080
           env:
-            # No PROVIDER_API_KEY: the model is bring-your-own, set per session
-            # in the UI. Only the index URL and Chainlit bind config are baked in.
             - name: MCP_URL
               value: {{ .Values.mcpUrl | quote }}
-            - name: CHAINLIT_HOST
-              value: "0.0.0.0"
-            - name: CHAINLIT_PORT
-              value: {{ .Values.service.port | quote }}
-          # Chainlit has no dedicated health route; a TCP check confirms the
-          # server is accepting connections.
+            # The model is the deployment's, and so is the bill. The key is
+            # never a value here: it is read from a Secret, either this chart's
+            # own or one named in `provider.existingSecret`.
+            - name: PROVIDER_MODEL
+              value: {{ required "provider.model is required" .Values.provider.model | quote }}
+            {{- /* Checked here rather than left to the pod: without either,
+                   the reference below names a Secret this chart never writes,
+                   and the container waits on it forever. */}}
+            {{- $_ := required "provider.apiKey or provider.existingSecret is required: the chat has no key to answer on" (or .Values.provider.apiKey .Values.provider.existingSecret) }}
+            - name: PROVIDER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.provider.existingSecret | default "mcp-chat-provider" }}
+                  key: {{ if .Values.provider.existingSecret }}{{ required "provider.existingSecretKey is required with provider.existingSecret" .Values.provider.existingSecretKey }}{{ else }}provider-api-key{{ end }}
+            {{- with .Values.ui.title }}
+            - name: MCP_AGENT_UI_TITLE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.tagline }}
+            - name: MCP_AGENT_UI_TAGLINE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.greeting }}
+            - name: MCP_AGENT_UI_GREETING
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.ui.examples }}
+            # One question per line, which is how the runtime reads this. Joined
+            # and quoted rather than written as a block scalar: a question that
+            # itself spans lines would break out of the block's indentation and
+            # the whole Deployment would fail to parse.
+            - name: MCP_AGENT_UI_EXAMPLES
+              value: {{ join "\n" . | quote }}
+            {{- end }}
+            {{- with .Values.ui.accent }}
+            - name: MCP_AGENT_UI_ACCENT
+              value: {{ . | quote }}
+            {{- end }}
+          # The agent connects to every toolset before uvicorn opens the
+          # socket, so during startup this container refuses connections rather
+          # than answering 503 — which is what the startup probe is for. Without
+          # it the liveness probe's own failures would restart a container that
+          # is only still connecting, and a slow toolset would produce a crash
+          # loop that looks like a broken image.
+          startupProbe:
+            httpGet:
+              path: /health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          # Only after that: is the process alive, and is the agent serving.
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/liveness
               port: http
-            initialDelaySeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/readiness
               port: http
-            initialDelaySeconds: 5
+            periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
