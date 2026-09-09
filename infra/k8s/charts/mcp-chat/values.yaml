@@ -52,8 +52,8 @@ provider:
   existingSecret: ""
   existingSecretKey: provider-api-key
 
-# What the page says about itself. Text and one colour, read by the client the
-# runtime serves. Everything here is optional: with no greeting the page opens
+# What the page says about itself, and where it keeps a key. Read by the client
+# the runtime serves. The text is all optional: with no greeting the page opens
 # on what the agent is actually connected to, which is right more often than a
 # sentence written once and left.
 ui:
@@ -64,6 +64,17 @@ ui:
   # its own toolsets can answer; the client cannot guess it.
   examples: []
   accent: ""
+  # Where the browser keeps a credential header a visitor types — their own key
+  # for the service behind a toolset, not the provider key. One of:
+  #   local    survives the browser closing, so a returning visitor need not
+  #            retype; right for a laptop with one owner
+  #   session  forgotten when the tab closes; right for a shared or public
+  #            machine, where the next person would otherwise find the last
+  #            one's key already filled in
+  #   none     held only for the life of the page
+  # The panel tells the visitor which of these is in force. A value outside the
+  # three stops the container rather than quietly falling back to `local`.
+  credentials: local
 
 ingress:
   # Hostname for the chat UI — a dedicated name, e.g. chat.<shared-domain>.

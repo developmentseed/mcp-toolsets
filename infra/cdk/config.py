@@ -207,6 +207,11 @@ class Chat:
     greeting: str = ""
     examples: tuple[str, ...] = ()
     accent: str = ""
+    #: Where the browser keeps a credential header a visitor types: ``local``
+    #: to survive the browser closing, ``session`` to be forgotten with the
+    #: tab, ``none`` to keep it out of storage entirely. A shared machine wants
+    #: one of the last two; a laptop with one owner does not care.
+    credentials: str = "local"
 
     @property
     def enabled(self) -> bool:
@@ -234,6 +239,7 @@ class Chat:
             # One per line; the runtime reads lines or a JSON array.
             "MCP_AGENT_UI_EXAMPLES": "\n".join(self.examples),
             "MCP_AGENT_UI_ACCENT": self.accent,
+            "MCP_AGENT_UI_CREDENTIALS": self.credentials,
         }
         return {name: value for name, value in values.items() if value}
 
