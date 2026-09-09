@@ -10,7 +10,7 @@ dependencies = [
     # the web client it serves. [api] is here for the dev environment, which
     # runs the chat locally; the toolset images sync with `--package` and so
     # never see it. Upgrade by bumping this range and running `uv lock`.
-    "mcp-toolsets-runtime[api]<0.9.0,>=0.8.4",
+    "mcp-toolsets-runtime[api]<0.9.0,>=0.8.5",
     "credential-demo",
     "hello",
     "stac-explorer",

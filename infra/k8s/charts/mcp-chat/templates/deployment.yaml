@@ -71,6 +71,10 @@ spec:
             - name: MCP_AGENT_UI_ACCENT
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.ui.credentials }}
+            - name: MCP_AGENT_UI_CREDENTIALS
+              value: {{ . | quote }}
+            {{- end }}
           # The agent connects to every toolset before uvicorn opens the
           # socket, so during startup this container refuses connections rather
           # than answering 503 — which is what the startup probe is for. Without

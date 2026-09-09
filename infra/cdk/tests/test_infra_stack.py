@@ -236,6 +236,9 @@ def test_the_page_is_configured_from_the_deployments_own_text():
     # Unset text is left out rather than set empty: the client falls back to
     # its own default on an absent variable, and to nothing on an empty one.
     assert "MCP_AGENT_UI_GREETING" not in variables
+    # Not text, and never absent: it says where a key a visitor types is kept,
+    # and the runtime refuses to start on a value outside its three.
+    assert variables["MCP_AGENT_UI_CREDENTIALS"] == "local"
 
 
 def test_bringing_your_own_certificate_writes_no_dns():
