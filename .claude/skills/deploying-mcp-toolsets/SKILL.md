@@ -140,14 +140,3 @@ Synthesising by hand needs a tag for every component, `index-aws` and `chat`
 included, not just the toolset you are working on. See "Working on the stack"
 in `README.md`.
 <!-- /target:aws -->
-
-## Never do these
-
-- **Never read `.env`.** It holds real API keys.
-<!-- target:k8s -->
-- **Never run `kubectl` or `helm` against a locally configured context.** The
-  deployment cluster is reached through CI, or a kubeconfig the user manages
-  outside this repo. Give the user the command to run instead.
-<!-- /target:k8s -->
-- **Never put a credential in a file you commit,** including in a comment
-  saying what it was.
