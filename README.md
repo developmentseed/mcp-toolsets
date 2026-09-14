@@ -265,7 +265,7 @@ tools and merge.
        matches: NotRequired[list[dict[str, Any]]]
 
    @tool
-   def do_something(query: str, limit: int = 10) -> DoSomethingResult | ToolError:
+   async def do_something(query: str, limit: int = 10) -> DoSomethingResult | ToolError:
        """One-line description — docstrings and type hints ARE the MCP schema."""
        ...
        return DoSomethingResult(message=f"Found {len(matches)} match(es).", matches=matches)
@@ -275,9 +275,10 @@ tools and merge.
 
    `TOOLS` is the only required export. Non-empty docstrings and the
    [ToolResult return contract](#typed-tool-returns) are enforced by a
-   contract test. If a tool does I/O (HTTP, database), write it as
-   `async def` — `@tool` supports coroutines natively; sync tools are fine
-   for pure computation (the runtime runs them in a thread pool). If a tool
+   contract test, which also refuses a sync tool that does blocking I/O.
+   Write anything touching HTTP or a database as `async def` — `@tool`
+   supports coroutines natively, and the scaffold generates one. Keep `def`
+   for pure computation, which the runtime runs in a thread pool. If a tool
    needs the *user's* credentials, read them from the request headers — see
    [Per-user credentials](#per-user-credentials). The shipped `hello` toolset
    is a minimal starting point you can copy.
@@ -1028,10 +1029,16 @@ the existing one rather than creating another.
 ### Working on the stack
 
 ```sh
+tags=$(ls toolsets | jq -R . | jq -sc 'map({(.): "abc"}) | add + {"index-aws": "abc", chat: "abc"}')
 uv run --group infra python -m infra.cdk.app -c instance=dev \
-  -c imagePrefix=ghcr.io/<owner>/<repo> -c imageTags='{"hello":"abc"}'
+  -c imagePrefix=ghcr.io/<owner>/<repo> -c imageTags="$tags"
 uv run --group infra pytest infra
 ```
+
+`imageTags` has to name every component the stack builds — each toolset plus
+`index-aws` and `chat` — not just the one you are working on. A map missing any
+of them fails with `no image tag for '<component>'`. That is what the deploy
+passes back from Parameter Store, and what CI builds the same way.
 
 Needs node, because `aws-cdk-lib` is a Python package with a JavaScript engine
 underneath. Synthesis reaches for no account, so this works anywhere; CI runs
