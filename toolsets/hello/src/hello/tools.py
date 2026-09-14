@@ -1,7 +1,7 @@
 """LangChain tools for the hello toolset — the smallest thing that deploys.
 
 Use this as the starting point for a real toolset (or run
-``./scripts/new-toolset <name>``): replace ``hello`` with your own ``@tool``
+``uv run mcp-toolset new <name>``): replace ``hello`` with your own ``@tool``
 functions and keep the ``TOOLS`` export.
 """
 
