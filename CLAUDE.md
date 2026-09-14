@@ -28,7 +28,15 @@ deployment target — see README), the `Dockerfile`, the workflows and
 - The AWS target lives in `infra/cdk` (CDK, Python). It needs node — `aws-cdk-lib`
   is a Python package with a JavaScript engine underneath — and its deps are a
   dependency group: `uv sync --group infra`. Synthesise with
-  `uv run --group infra python -m infra.cdk.app -c instance=dev -c imagePrefix=... -c imageTags='{...}'`.
+
+  ```sh
+  tags=$(ls toolsets | jq -R . | jq -sc 'map({(.): "dev"}) | add + {"index-aws": "dev", chat: "dev"}')
+  uv run --group infra python -m infra.cdk.app -c instance=dev \
+    -c imagePrefix=ghcr.io/<owner>/<repo> -c imageTags="$tags"
+  ```
+
+  `imageTags` must name *every* component — each toolset plus `index-aws` and
+  `chat` — or synthesis fails with `no image tag for '<component>'`.
 <!-- /target:aws -->
 - Build toolset UIs: `./scripts/build-views` (needs node). Built view bundles
   live at `<package>/views/*.html`, are git-ignored, and must exist before
