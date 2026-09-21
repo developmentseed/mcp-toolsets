@@ -132,7 +132,7 @@ authority on everything it exposes, and stays current when this doesn't:
 | --- | --- |
 | `mcp_runtime` | **Required.** Serves a toolset's `TOOLS` as a stateless streamable-HTTP MCP server with a `/health` route for k8s probes, and its `VIEWS` as `ui://` resources — `mcp-serve` for one toolset, `mcp-serve-local` for all of them at once. Also runs the directory service (`mcp-index`). |
 | `mcp_cli` | **Development inner loop.** Typer/rich client (`mcp-cli`) to list and call tools on a running service. |
-| `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. |
+| `mcp_toolset` | **Scaffolding.** `mcp-toolset new [--with-ui] <name>` writes a conforming toolset into `toolsets/` and registers it in the workspace. `mcp-toolset skill` prints the path to the authoring skill inside the installed wheel, for a coding agent to read. |
 | `mcp_agent` | **The agent.** Discovers every server behind an index URL and drives their tools — `mcp-agent` is an interactive terminal chat, and `build_agent`/`run_turn` are the same thing for a host of your own. |
 | `mcp_agent_api` | **The hosted chat.** That agent over HTTP as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) events, plus the web client that renders them — streamed answers, tool calls as they run, receipts beside them, and a session-state panel. The client ships inside the wheel, so `Dockerfile.chat` runs `uvicorn` and builds no frontend. Needs the `[api]` extra, which is what the root pin takes. |
 | `mcp_state` | **Already working on these toolsets, untagged.** It keeps large tool values out of the model's context. Every `ToolResult` data key is declared in the tool's `_meta` and captured into session state by the bundled agent, whether or not you tag anything. Tagging a parameter `NotAuthored` is the accelerator on top — see below. |
@@ -141,6 +141,9 @@ authority on everything it exposes, and stays current when this doesn't:
 
 Upgrade with `uv lock --upgrade-package mcp-toolsets-runtime`; because `uv.lock`
 is a shared build input, merging the bump rebuilds and redeploys every toolset.
+The wheel also carries the authoring skill; `uv run mcp-toolset skill` prints
+its path. Read it there rather than copying it in, so it always matches the
+pin.
 Fix runtime behaviour upstream and release it — never patch it here, since
 nothing local would survive the next `uv sync`.
 
@@ -589,7 +592,21 @@ drivers, so `PROVIDER_MODEL` picks one without a rebuild and the workspace
 itself stays provider-agnostic. A visitor can still supply *toolset*
 credentials: a toolset that declares a credential header gets a field in the
 page's keys panel, and what is typed there beats the deployment's own value for
-that header.
+that header. The panel asks only for what is missing: `GET /connections` is
+answered for the caller who asked, so a header the deployment holds, or one an
+auth proxy in front of the chat already puts on the request, is not asked for
+again.
+
+**The agent can ask the visitor a question.** Rather than guessing between two
+readings of a question, or burying the ambiguity in its answer, it calls an
+`interrupt` tool and the page shows the question with its options; the answer
+resumes the same turn. It is on by default, and needs no wiring — set
+`MCP_AGENT_INTERRUPT_GATE=0` to leave the tool out.
+
+**One run per thread.** Two windows on the same conversation used to be able to
+answer over each other, losing a turn. A second question on a conversation
+already being answered is now refused, and the page waits for the other window's
+answer and then shows it, keeping what was typed.
 
 The page's own text — its title, an optional greeting, and the example
 questions offered before anyone has typed — is `MCP_AGENT_UI_*`, set
@@ -627,7 +644,9 @@ default** — so a restart, a redeploy or a second replica loses them. That is
 fine for demos and is why nothing extra is deployed for it, and why the chat
 runs as a single instance. To keep conversations, point `MCP_AGENT_CHECKPOINT`
 at a PostgreSQL URL and add the runtime's `[checkpointing-postgres]` extra to
-the chat image. The same per-thread state also carries what the toolsets
+the chat image. That also decides how far "one run per thread" reaches: in
+memory it holds within the process, and on PostgreSQL it holds across every
+replica, including the old and new pods of a rolling deploy. The same per-thread state also carries what the toolsets
 published, so if you do adopt `mcp_state`, where conversations live becomes a
 real decision rather than a detail.
 
@@ -1104,8 +1123,10 @@ with user_credentials({"x-demo-token": the_users_token}):
 The hosted chat does the same for a browser: `GET /connections` reports every
 credential header the connected toolsets declared, the page offers a field per
 header, and each question carries its own — so one long-lived agent process
-serves many users, each with their own credentials. The route also says whether
-the deployment already holds a value for a header, and a visitor's own beats it.
+serves many users, each with their own credentials. The route answers for the
+caller who asked: a header that request already carries, or one the deployment
+holds, is reported as supplied and the page does not ask for it. A visitor's own
+value beats the deployment's.
 
 ```sh
 uv run mcp-cli call whoami \
