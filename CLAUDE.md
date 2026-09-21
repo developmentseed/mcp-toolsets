@@ -24,6 +24,10 @@ deployment target — see README), the `Dockerfile`, the workflows and
   points at the templates under `infra/` — edit those, not the copies in each
   toolset, when the shape changes.
 - Remove a toolset: `./scripts/remove-toolset <name>`.
+- Writing or changing a toolset: read the runtime's authoring skill, whose path
+  `uv run mcp-toolset skill` prints. It ships in the wheel, so it always matches
+  the pin. Do not install a copy here (`--install`) — this repo owns no runtime
+  content, and a copy would go stale at the next bump.
 <!-- target:aws -->
 - The AWS target lives in `infra/cdk` (CDK, Python). It needs node — `aws-cdk-lib`
   is a Python package with a JavaScript engine underneath — and its deps are a
