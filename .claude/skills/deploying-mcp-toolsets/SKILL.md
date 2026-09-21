@@ -9,31 +9,16 @@ This repo turns directories under `toolsets/` into deployed MCP services. It
 owns `toolsets/`, `infra/`, the `Dockerfile`s, the workflows and
 `tests/test_contract.py`.
 
-**Writing the tools themselves is not covered here.** That belongs to
-`mcp-toolsets-runtime`, which ships its own skill matching the version this
-repo pins:
-
-```bash
-uv run mcp-toolset skill --install   # writes .claude/skills/writing-mcp-toolsets/
-```
-
-If that command does not exist, the pinned runtime predates it. Read
-`docs/CONSUMING.md` in
-[mcp-toolsets-runtime](https://github.com/developmentseed/mcp-toolsets-runtime)
-instead.
+**Writing the tools themselves is not covered here.** The runtime ships its
+own skill for that, matching the version this repo pins; `uv run mcp-toolset
+skill` prints its path. It also carries the rule that this repo owns no
+runtime code.
 
 `README.md` is the reference for everything below. This file is the procedure.
 
 ## Get these right first
 
-**1. This repo owns no runtime code.** `mcp_runtime`, `mcp_state`, `mcp_cli`,
-`mcp_agent`, `mcp_agent_api` and `mcp_toolset` come from the
-`mcp-toolsets-runtime` package, pinned in the root `pyproject.toml`. Never add
-a module under one of those names, and never patch runtime behaviour here.
-Nothing local survives the next `uv sync`. Fix it upstream, release, bump the
-pin.
-
-**2. Know what your change redeploys.** This is the difference between
+**1. Know what your change redeploys.** This is the difference between
 touching one service and touching all of them.
 
 | What you change | What redeploys |
@@ -48,26 +33,20 @@ not a mistake to route around.
 After fixing a workflow, run it with `workflow_dispatch`. Merging it does
 nothing on its own.
 
-**3. Deleting a toolset directory tears down the live service.** The deploy
+**2. Deleting a toolset directory tears down the live service.** The deploy
 reconciles what is running against `toolsets/`, so a merged deletion is a
 teardown. Use `./scripts/remove-toolset <name>` rather than `rm -rf`.
 
 ## Adding a toolset
 
-```bash
-uv run mcp-toolset new my-toolset     # --with-ui for a React view
-```
+`uv run mcp-toolset new my-toolset` scaffolds it; the runtime's skill covers
+that part. Two things only this repo knows:
 
-Never hand-roll the directory. The generator writes the package, the test, the
-pyproject and the deployment config this repo declares under
-`[tool.mcp-toolset] deployment-config` in the root `pyproject.toml`. Those
-files come from the templates under `infra/`. If the shape needs to change,
-edit the template, not the copy in each toolset.
-
-Then write the tools, following the runtime's skill.
-
-The conventions the deploy relies on: directory `toolsets/<name>` in
-kebab-case, module `<name_snake_case>.tools`, service and image `mcp-<name>`.
+- The deployment config it writes comes from the templates under `infra/`,
+  named by `[tool.mcp-toolset] deployment-config` in the root
+  `pyproject.toml`. Change the template, not the copy in each toolset.
+- The deploy relies on the names: directory `toolsets/<name>` in kebab-case,
+  module `<name_snake_case>.tools`, service and image `mcp-<name>`.
 
 ## Checks before you open a PR
 
@@ -76,21 +55,12 @@ kebab-case, module `<name_snake_case>.tools`, service and image `mcp-<name>`.
 ./scripts/test      # every package, plus the contract sweep over toolsets/
 ```
 
-The contract sweep is `tests/test_contract.py`. It imports every toolset and
-checks the `TOOLS` export, non-empty docstrings, the typed return contract, and
-that no sync tool does blocking I/O. `tests/` holds only what is about *this
-repo's* toolsets; tests for runtime behaviour belong upstream.
+`tests/test_contract.py` sweeps every toolset against the runtime's gates.
+`tests/` holds only what is about *this repo's* toolsets; tests for runtime
+behaviour belong upstream.
 
-Then serve it and make a real call, because the tests do not exercise the
-schema the model actually sees:
-
-```bash
-uv run mcp-serve-local
-uv run mcp-cli list --url http://localhost:8000/my-toolset/mcp
-uv run mcp-cli call my_tool arg=value --url http://localhost:8000/my-toolset/mcp
-```
-
-A toolset with a view needs `./scripts/build-views` first. Built bundles live
+Then serve it and make a real call, as the runtime's skill describes. A
+toolset with a view needs `./scripts/build-views` first. Built bundles live
 at `<package>/views/*.html`, are git-ignored, and `mcp-serve` aborts without
 them.
 
@@ -100,7 +70,6 @@ them.
   current version when adding one.
 - Test filenames are unique across the whole workspace. mypy and pytest sweep
   every package in one run, so two `test_tools.py` collide.
-- Tools that do I/O are `async def`. Sync is for pure computation only.
 
 <!-- target:both -->
 ## Two deployment targets
