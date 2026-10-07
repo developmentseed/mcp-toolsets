@@ -1,5 +1,23 @@
 # mcp-toolsets
 
+Running a set of tools as MCP servers takes more than the tools. Each server
+needs an image, a deployment, health checks, a way for agents to find it, and a
+way to pass a user's credential that does not go through the prompt. Built
+separately for each server, that work is repeated, drifts apart, and is where
+most of the time goes.
+
+This template does it once. Write a toolset, a Python module of LangChain
+tools, and merging it to `main` deploys it as its own MCP server: built, health
+checked, and listed in an index that names every server and its tools. Each
+server speaks streamable HTTP, so any MCP client can use it, and an agent can
+find them all from the index's one URL. It all runs on your own
+infrastructure, on Kubernetes or on AWS, and a hosted chat comes with it, so
+the servers can be tried as soon as they deploy.
+
+Use it to publish MCP servers over your own data or APIs, for your own agents
+or anyone else's, without building the platform first. Generate a repo from it
+and add your own toolsets.
+
 A template monorepo of **toolsets** — small packages of
 [LangChain](https://python.langchain.com) tools — each auto-deployed as its own
 [MCP](https://modelcontextprotocol.io) service. Toolset implementors write a
