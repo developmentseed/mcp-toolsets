@@ -75,6 +75,10 @@ ui:
   # The panel tells the visitor which of these is in force. A value outside the
   # three stops the container rather than quietly falling back to `local`.
   credentials: local
+  # Where the page's "sign out" control goes, e.g. /oauth2/sign_out behind
+  # oauth2-proxy. Empty shows no control: with no sign-in in front of the
+  # page, there is no session to end.
+  logoutUrl: ""
 
 ingress:
   # Hostname for the chat UI — a dedicated name, e.g. chat.<shared-domain>.
