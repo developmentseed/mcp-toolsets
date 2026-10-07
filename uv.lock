@@ -16,14 +16,14 @@ members = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.1.22"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/f7/9bf788e7d3608725d022a248a58427040f4f930ab87ddb54bd29ee4d9a51/ag_ui_protocol-0.1.22.tar.gz", hash = "sha256:d21f265284a50d9fc87ad7bcbd58f737b4b16eef7b5375f13a6e925117b52046", size = 18110, upload-time = "2026-08-31T18:20:04.334Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/92/d88fdc7f4648dc38d3d54c595066bb3e63a4c091884ffb2f98272c33eef8/ag_ui_protocol-1.0.0.tar.gz", hash = "sha256:cfebecef2e7bc942cc8a52d908a4ea86a98f631d2ffdc6ec5812bb843eac74fb", size = 30759, upload-time = "2026-09-17T18:31:19.448Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/6c/af3d577e68c9474c99600e65b2c6283772aae187edca6f0f2f5cbd9f565a/ag_ui_protocol-0.1.22-py3-none-any.whl", hash = "sha256:fca13ee7820f8f53e869c19e09ddd75826c1799b27c2adb6f2e567295433c704", size = 22068, upload-time = "2026-08-31T18:20:03.43Z" },
+    { url = "https://files.pythonhosted.org/packages/82/b0/850be4576e6443dc575daa54188d8136ae2b2eca3f19e098e7a088fc9ebc/ag_ui_protocol-1.0.0-py3-none-any.whl", hash = "sha256:0058eaf0522201089d444e430fc35180bc8ad0222cae39e8568b313e8105d9e6", size = 36842, upload-time = "2026-09-17T18:31:18.471Z" },
 ]
 
 [[package]]
@@ -755,7 +755,7 @@ infra = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["api"], specifier = ">=0.10.2,<0.11.0" },
+    { name = "mcp-toolsets-runtime", extras = ["api"], specifier = ">=0.10.4,<0.11.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -778,7 +778,7 @@ infra = [
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.10.2"
+version = "0.10.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -791,9 +791,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/44/b9ae14d900f2e40b71a8f016e3578152acab7b975bc62037998d10aa8427/mcp_toolsets_runtime-0.10.2.tar.gz", hash = "sha256:b0dffddd09f9407130b3f20466525d1e7ca7ed730ae940ac440e3da7244b501c", size = 779888, upload-time = "2026-09-21T09:58:28.342Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/42/15af17c4b7dc6493a33358c4df135fef71695c8971826a2fbe6a3736f28a/mcp_toolsets_runtime-0.10.4.tar.gz", hash = "sha256:afc427f06c7a9268d7f2443fe2fd4244928c708bdcc8287d17b2211afe650bb1", size = 784069, upload-time = "2026-10-07T14:03:56.521Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/f6/804772044edcdb6aa19542929d28d3523e05359ba6b6f68e52b412628cda/mcp_toolsets_runtime-0.10.2-py3-none-any.whl", hash = "sha256:f46a5d05dd88e698e9d2fecbcce6e052e6462ea3a01fa652f85cb56ae7fc3b1b", size = 327708, upload-time = "2026-09-21T09:58:26.434Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/a0/9a086b576e9cce606d60bfdddd4060f98ca91596253f0e73f8d299927757/mcp_toolsets_runtime-0.10.4-py3-none-any.whl", hash = "sha256:72e0ba9a656b4871f4e09240ed105ae6201d7cf5c3e1ed8bc44c6295b0ad09f9", size = 329637, upload-time = "2026-10-07T14:03:54.622Z" },
 ]
 
 [package.optional-dependencies]

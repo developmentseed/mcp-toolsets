@@ -212,6 +212,10 @@ class Chat:
     #: tab, ``none`` to keep it out of storage entirely. A shared machine wants
     #: one of the last two; a laptop with one owner does not care.
     credentials: str = "local"
+    #: Where the page's "sign out" control goes, e.g. ``/oauth2/sign_out``
+    #: behind oauth2-proxy. Empty shows no control: with no sign-in in front
+    #: of the page, there is no session to end.
+    logout_url: str = ""
 
     @property
     def enabled(self) -> bool:
@@ -240,6 +244,7 @@ class Chat:
             "MCP_AGENT_UI_EXAMPLES": "\n".join(self.examples),
             "MCP_AGENT_UI_ACCENT": self.accent,
             "MCP_AGENT_UI_CREDENTIALS": self.credentials,
+            "MCP_AGENT_UI_LOGOUT_URL": self.logout_url,
         }
         return {name: value for name, value in values.items() if value}
 
