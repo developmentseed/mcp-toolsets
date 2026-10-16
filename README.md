@@ -787,16 +787,20 @@ curl https://<host>/ | jq
 uv run mcp-cli list --url https://<host>/hello/mcp
 ```
 
-The index's `connections` key is shaped for
-`langchain_mcp_adapters.client.MultiServerMCPClient`, so an agent can consume
-every deployed toolset in three lines:
+The index's `connections` key maps each toolset to its URL, so an agent can
+consume every deployed toolset in a few lines, with the runtime's `[agent]`
+extra:
 
 ```python
 import httpx
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from mcp_agent.main import list_tools, with_credential_support
 
 connections = httpx.get("https://<host>/").json()["connections"]
-tools = await MultiServerMCPClient(connections).get_tools()
+tools = [
+    tool
+    for client in with_credential_support(connections, None).values()
+    for tool in await list_tools(client)
+]
 ```
 
 The runtime's `mcp-agent` does exactly that as an interactive chat. The model is
@@ -1121,7 +1125,7 @@ decorating the index's `connections` map, `mcp-cli` with `-H`:
 ```python
 connections = httpx.get("https://<host>/").json()["connections"]
 connections["credential-demo"]["headers"] = {"X-Demo-Token": user_token}
-tools = await MultiServerMCPClient(connections).get_tools()
+clients = with_credential_support(connections, None)
 ```
 
 `mcp-agent` goes further, in the shape a multi-user deployment needs: the
