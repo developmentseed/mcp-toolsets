@@ -1,16 +1,18 @@
 """LangChain tools demonstrating tools that ask the user a question.
 
-Each tool cannot finish without the user: it raises ``AskUser`` with what it
-needs, the agent puts the question to the user, and then calls the tool again
-with the answer in ``answers()``. Between them the questions use every kind of
-field an MCP form request allows: numbers with bounds, strings with a format
-or a pattern, booleans, a choice from a list, several choices, a default, and
-a description. The work each one does is stubbed.
+Each tool cannot finish without the user, so it calls ``ask`` with a question
+and the schema of the answer. The first time through, the call ends there and
+the agent puts the question to the user; the agent then calls the tool again,
+from the start, and ``ask`` returns what the user gave. Between them the
+questions use every kind of field an MCP form request allows: numbers with
+bounds, strings with a format or a pattern, booleans, a choice from a list,
+several choices, a default, and a description. The work each one does is
+stubbed.
 """
 
 from langchain_core.tools import tool
 
-from mcp_runtime.questions import AskUser, answers
+from mcp_runtime.questions import ask
 from mcp_runtime.tool_result import ToolResult
 
 WHICH_YEAR = {
@@ -37,10 +39,8 @@ async def download(dataset: str) -> ToolResult:
     """Download one year of a dataset, asking the user which year."""
     # Ask first: the tool runs from the start on both calls, so work done
     # before asking is done twice.
-    if (replies := answers()) is None:
-        raise AskUser(which=(f"Which year of {dataset}?", WHICH_YEAR))
-    chosen = replies["which"].content  # None when the user declined
-    if chosen is None:
+    chosen = ask(f"Which year of {dataset}?", WHICH_YEAR)
+    if chosen is None:  # the user declined
         return ToolResult(
             message=f"No year chosen, so nothing downloaded from {dataset}."
         )
@@ -80,9 +80,7 @@ HOW_OFTEN = {
 @tool
 async def subscribe(dataset: str) -> ToolResult:
     """Subscribe the user to changes in a dataset, asking how often."""
-    if (replies := answers()) is None:
-        raise AskUser(schedule=(f"How often, for {dataset}?", HOW_OFTEN))
-    chosen = replies["schedule"].content
+    chosen = ask(f"How often, for {dataset}?", HOW_OFTEN)
     if chosen is None:
         return ToolResult(message=f"Not subscribed to {dataset}.")
     kind = "a digest" if chosen.get("digest", True) else "every change"
@@ -97,9 +95,7 @@ WHAT_TO_EXPORT = {
     "properties": {
         "variables": {
             "type": "array",
-            "items": {
-                "enum": ["t2m", "tp", "sp", "u10", "v10"],
-            },
+            "items": {"enum": ["t2m", "tp", "sp", "u10", "v10"]},
             "description": "Which variables to include",
         },
         "format": {
@@ -115,9 +111,7 @@ WHAT_TO_EXPORT = {
 @tool
 async def export(dataset: str) -> ToolResult:
     """Export variables of a dataset, asking which and in what format."""
-    if (replies := answers()) is None:
-        raise AskUser(what=(f"What to export from {dataset}?", WHAT_TO_EXPORT))
-    chosen = replies["what"].content
+    chosen = ask(f"What to export from {dataset}?", WHAT_TO_EXPORT)
     if chosen is None:
         return ToolResult(message=f"Nothing exported from {dataset}.")
     return ToolResult(
@@ -149,9 +143,7 @@ WHERE_TO_SEND = {
 @tool
 async def register_webhook() -> ToolResult:
     """Register a webhook for dataset events, asking where to send them."""
-    if (replies := answers()) is None:
-        raise AskUser(where=("Where should events go?", WHERE_TO_SEND))
-    chosen = replies["where"].content
+    chosen = ask("Where should events go?", WHERE_TO_SEND)
     if chosen is None:
         return ToolResult(message="No webhook registered.")
     return ToolResult(
