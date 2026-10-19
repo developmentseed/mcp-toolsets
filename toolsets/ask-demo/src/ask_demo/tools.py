@@ -11,9 +11,21 @@ from langchain_core.tools import tool
 from mcp_runtime.questions import AskUser, answers
 from mcp_runtime.tool_result import ToolResult
 
-YEAR = {
+WHICH = {
     "type": "object",
-    "properties": {"year": {"type": "integer", "minimum": 1940, "maximum": 2026}},
+    "properties": {
+        "year": {
+            "type": "integer",
+            "minimum": 1940,
+            "maximum": 2026,
+            "description": "The year to download",
+        },
+        "notify": {
+            "type": "string",
+            "format": "email",
+            "description": "An address to email when it is ready",
+        },
+    },
     "required": ["year"],
 }
 
@@ -24,13 +36,16 @@ async def download(dataset: str) -> ToolResult:
     # Ask first: the tool runs from the start on both calls, so work done
     # before asking is done twice.
     if (replies := answers()) is None:
-        raise AskUser(year=(f"Which year of {dataset}?", YEAR))
-    chosen = replies["year"].content  # None when the user declined
+        raise AskUser(which=(f"Which year of {dataset}?", WHICH))
+    chosen = replies["which"].content  # None when the user declined
     if chosen is None:
         return ToolResult(
             message=f"No year chosen, so nothing downloaded from {dataset}."
         )
-    return ToolResult(message=f"Downloaded {dataset} for {chosen['year']}.")
+    done = f"Downloaded {dataset} for {chosen['year']}."
+    if notify := chosen.get("notify"):
+        done += f" Told {notify}."
+    return ToolResult(message=done)
 
 
 TOOLS = [download]
