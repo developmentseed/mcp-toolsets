@@ -132,9 +132,11 @@ what you set is where the toolsets deploy:
    instance is green out of the box, with no AWS account required.
    <!-- /target:aws -->
 
-The repo ships two example toolsets you can keep, copy or delete: `hello` (the
-smallest thing that deploys) and `credential-demo` (the
-[per-user credentials](#per-user-credentials) pattern).
+The repo ships three example toolsets you can keep, copy or delete: `hello`
+(the smallest thing that deploys), `credential-demo` (the
+[per-user credentials](#per-user-credentials) pattern) and `ask-demo` (a tool
+that stops to ask the user a question, with `AskUser` from
+`mcp_runtime.questions`).
 
 ## The runtime dependency
 
