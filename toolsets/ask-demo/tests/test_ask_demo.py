@@ -19,6 +19,7 @@ def test_the_first_call_asks(tool):
     with pytest.raises(Asked) as asked:
         run(tool, arguments)
     assert asked.value.message and asked.value.schema["required"]
+    assert asked.value.schema["type"] == "object"
 
 
 def test_the_answer_picks_the_year():
