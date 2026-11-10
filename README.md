@@ -682,14 +682,17 @@ one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstra
    ```sh
    kubectl create namespace __MCP_NAMESPACE__
    kubectl -n __MCP_NAMESPACE__ create serviceaccount deployer
-   kubectl -n __MCP_NAMESPACE__ create role deployer --verb='*' \
+   kubectl -n __MCP_NAMESPACE__ create role deployer --verb=get,list,watch,create,update,patch,delete \
      --resource=deployments.apps,services,secrets,serviceaccounts,ingresses.networking.k8s.io,roles.rbac.authorization.k8s.io,rolebindings.rbac.authorization.k8s.io
    kubectl -n __MCP_NAMESPACE__ create rolebinding deployer \
      --role=deployer --serviceaccount=__MCP_NAMESPACE__:deployer
    ```
 
    (`secrets` is Helm's release storage; `serviceaccounts`/`roles`/
-   `rolebindings` are needed to install `infra/k8s/charts/mcp-index`.)
+   `rolebindings` are needed to install `infra/k8s/charts/mcp-index`. The verbs
+   are listed rather than `*`, which on `roles`/`rolebindings` includes `escalate`
+   and `bind`: with those, a leaked deploy token could grant itself any
+   permission in the namespace.)
 
    `KUBE_CONFIG` is a complete kubeconfig file with a deployer token inside —
    not the token alone. The API server URL must be reachable from GitHub's
