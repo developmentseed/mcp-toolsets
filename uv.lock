@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -1079,7 +1079,7 @@ infra = [
 requires-dist = [
     { name = "credential-demo", editable = "toolsets/credential-demo" },
     { name = "hello", editable = "toolsets/hello" },
-    { name = "mcp-toolsets-runtime", extras = ["api"], specifier = ">=0.11.0,<0.12.0" },
+    { name = "mcp-toolsets-runtime", extras = ["api"], specifier = ">=0.13.1,<0.14.0" },
     { name = "stac-explorer", editable = "toolsets/stac-explorer" },
 ]
 
@@ -1102,7 +1102,7 @@ infra = [
 
 [[package]]
 name = "mcp-toolsets-runtime"
-version = "0.11.0"
+version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1114,9 +1114,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7c/13/c93c76268ebc1745764d2ada4cc4bdb0cc0d9a369ec71458c1e3568eaac6/mcp_toolsets_runtime-0.11.0.tar.gz", hash = "sha256:e31d3deaf9b59a15d001d7e5ec34674b0cf7b14552c951f75cf44f8265940a22", size = 811554, upload-time = "2026-10-16T09:41:37.441Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/0e/36217f5c4c09021558dae8f8297be71cb519aafd117c824987f327618713/mcp_toolsets_runtime-0.13.1.tar.gz", hash = "sha256:3cf2d3c9c2e8facd7343ceb36204e5e37cc9a3cdf69962c11a2c80908857af72", size = 870293, upload-time = "2026-11-09T14:08:08.44Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/08/88de9c88a56f9b5a2ac07940b49765091cebfa550a3e8f60cdb45e8e60f0/mcp_toolsets_runtime-0.11.0-py3-none-any.whl", hash = "sha256:e384715469bf7735faa7668e491dc6b5383d85ccca1607ebb1f69e4b4c22e95a", size = 338430, upload-time = "2026-10-16T09:41:35.647Z" },
+    { url = "https://files.pythonhosted.org/packages/22/ab/9c4a7b1a2816fc4a1dffddb79e6302abc94d9cdd8ff709b5266f1a731258/mcp_toolsets_runtime-0.13.1-py3-none-any.whl", hash = "sha256:fed0145afc9433dc4a2c24f6b27444436ef110e7fe602dcdb2d10da1999063f0", size = 361175, upload-time = "2026-11-09T14:08:06.371Z" },
 ]
 
 [package.optional-dependencies]

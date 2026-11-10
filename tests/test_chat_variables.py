@@ -11,19 +11,22 @@ dependency group and the chart is YAML, so reading both as text is what lets
 one test cover both targets in the base test job.
 """
 
+import inspect
 import re
 from pathlib import Path
 
-from mcp_agent_api.ui import ENV_PREFIX, UiConfig
+from mcp_agent_api.ui import ENV_PREFIX, config_from_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Every variable the client reads, except `api`, which is not one: the server
-#: writes it into the page from where it mounted the routes.
+#: Every variable the runtime reads. Not every `UiConfig` field is one: the
+#: server sets `api` from where it mounted the routes, and `feedback` and
+#: `view_calls` from the routes it registered.
 EXPECTED = {
-    f"{ENV_PREFIX}{name.upper()}"
-    for name in UiConfig().__dataclass_fields__
-    if name != "api"
+    f"{ENV_PREFIX}{name}"
+    for name in re.findall(
+        r'read\("([A-Z_]+)"', inspect.getsource(config_from_environment)
+    )
 }
 
 #: Where each target says what the chat container is given. A target that has
