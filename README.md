@@ -232,6 +232,10 @@ with sequence diagrams and a runnable demo, is in the runtime's
 
 ```sh
 uv sync                # runtime from PyPI + every toolset, into one .venv
+
+# Build the UI views (they are gitignored) for any toolset with a ui/ directory, e.g. stac-explorer
+cd toolsets/stac-explorer/ui && npm ci && npm run build
+
 ./scripts/test         # run all tests
 ./scripts/lint         # ruff + mypy (./scripts/format to autofix)
 
