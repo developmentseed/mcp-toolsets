@@ -1,0 +1,49 @@
+# One-time cluster setup (see README "Kubernetes cluster setup"): values for
+# the Traefik Helm chart 42.4.1. The charts' Ingresses keep class `nginx` and
+# their nginx.ingress.kubernetes.io/* annotations (path rewrite, unbuffered
+# SSE, long timeouts); Traefik serves them through its Ingress NGINX provider.
+
+# The chart's own `traefik` IngressClass would be the cluster default; the
+# charts use `nginx` (ingressclass-nginx.yaml) only.
+ingressClass:
+  enabled: false
+
+providers:
+  # Only the Ingress NGINX provider. The CRD provider would let any namespace
+  # route any host with an IngressRoute (the README installs with --skip-crds,
+  # so none can be created); the Ingress provider would duplicate the routes.
+  kubernetesCRD:
+    enabled: false
+  kubernetesIngress:
+    enabled: false
+  kubernetesIngressNGINX:
+    enabled: true
+    disableSvcExternalName: true # no ExternalName backends
+    publishService:
+      enabled: true # write the load balancer's address into Ingress status
+  file:
+    enabled: true
+    content:
+      http:
+        middlewares:
+          hsts:
+            headers:
+              stsSeconds: 31536000
+              stsIncludeSubdomains: true
+
+# What ingress-nginx did by default: drop request headers whose name aliases
+# another one (X_Auth_User for X-Auth-User), answer 400 to an encoded NUL (%00)
+# in the path, and send HSTS on HTTPS.
+global:
+  aliasHeadersStrategy: delete
+ports:
+  web:
+    http:
+      encodedCharacters:
+        allowEncodedNullCharacter: false
+  websecure:
+    http:
+      encodedCharacters:
+        allowEncodedNullCharacter: false
+      middlewares:
+        - hsts@file

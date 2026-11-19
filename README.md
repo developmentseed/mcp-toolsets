@@ -674,7 +674,7 @@ real decision rather than a detail.
 ## Kubernetes cluster setup
 
 The deploy workflow assumes an existing cluster. Minimum requirements: a
-conformant cluster (v1.24+) with outbound access to `ghcr.io`, plus the
+conformant cluster (v1.30+) with outbound access to `ghcr.io`, plus the
 one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstrap
 (the `MCP_NAMESPACE` variable's value); substitute it in the commands.
 
@@ -727,13 +727,40 @@ one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstra
      --docker-password=<token-with-read:packages>
    ```
 
-3. **ingress-nginx** — the charts' ingress defaults assume it:
+3. **Traefik** — serves the charts' Ingresses. They keep class `nginx` and
+   their `nginx.ingress.kubernetes.io/*` annotations (prefix rewrite,
+   unbuffered SSE, hour-long timeouts), which Traefik's
+   [Ingress NGINX provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-ingress-nginx/)
+   reads. The community ingress-nginx controller was retired in March 2026
+   and gets no more fixes.
 
    ```sh
-   helm upgrade --install ingress-nginx ingress-nginx \
-     --repo https://kubernetes.github.io/ingress-nginx \
-     --namespace ingress-nginx --create-namespace
+   helm upgrade --install traefik traefik \
+     --repo https://traefik.github.io/charts --version 42.4.1 \
+     --namespace traefik --create-namespace --skip-crds \
+     -f infra/k8s/cluster/traefik-values.yaml
+   kubectl apply -f infra/k8s/cluster/ingressclass-nginx.yaml
    ```
+
+   Already running ingress-nginx? To move without an outage, first make sure
+   uninstalling it keeps the `nginx` IngressClass. Helm reads that policy from
+   its release, so `kubectl annotate` is not enough. Keep your installed chart
+   version (`helm list -n ingress-nginx`):
+
+   ```sh
+   helm upgrade ingress-nginx ingress-nginx \
+     --repo https://kubernetes.github.io/ingress-nginx \
+     --namespace ingress-nginx --reuse-values \
+     --version <installed chart version> \
+     --set-json 'controller.ingressClassResource.annotations={"helm.sh/resource-policy": "keep"}'
+   ```
+
+   Then run the commands above with
+   `--set providers.kubernetesIngressNGINX.publishService.enabled=false` added
+   to the `helm` one, so the two controllers don't overwrite each other's
+   Ingress status. Point DNS at Traefik (step 5); once clients have moved,
+   `helm uninstall ingress-nginx -n ingress-nginx` and re-run the `helm`
+   command without that `--set`.
 
 4. **cert-manager** — issues and renews the shared domain's certificate:
 
@@ -746,7 +773,7 @@ one-time setup below. `__MCP_NAMESPACE__` is the namespace you chose at bootstra
 
 5. **DNS + a ClusterIssuer.** Point an A/CNAME record for your chosen
    hostname at the ingress controller's load balancer
-   (`kubectl -n ingress-nginx get svc ingress-nginx-controller`), and tell
+   (`kubectl -n traefik get svc traefik`), and tell
    cert-manager how to reach Let's Encrypt — the one resource it can't
    create for itself. Set your email in `infra/k8s/cluster/letsencrypt-clusterissuer.yaml`
    (Let's Encrypt sends expiry warnings there), then:
