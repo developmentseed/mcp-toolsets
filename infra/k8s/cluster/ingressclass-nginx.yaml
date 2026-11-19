@@ -1,0 +1,9 @@
+# One-time cluster setup (see README "Kubernetes cluster setup"): the class the
+# charts' Ingresses name. Traefik's Ingress NGINX provider serves only classes
+# with this controller, and the Traefik chart does not create one.
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx

@@ -40,8 +40,9 @@ ingress:
   # Name of an existing TLS Secret in the namespace covering ingress.host
   # (e.g. from a wildcard cert). Empty means plain HTTP.
   tlsSecret: ""
-  # Defaults assume ingress-nginx: strip the /<name> prefix so the pod
-  # still sees /mcp, and keep streamable-HTTP (SSE) responses unbuffered.
+  # ingress-nginx annotations, which Traefik's Ingress NGINX provider reads:
+  # strip the /<name> prefix so the pod still sees /mcp, and keep
+  # streamable-HTTP (SSE) responses unbuffered.
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
